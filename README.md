@@ -27,11 +27,13 @@ Frontend және Backend үйрену барысында жасалатын т�
 - `src/types` — TypeScript типтері
 
 ## Қалай іске қосу
+```bash
+cd dosan
 npm install
 npm run dev
+```
 
 Содан кейін http://localhost:3000 ашыңыз.
-
 ## Жол картасы
 - [x] Next.js жобасын құру
 - [x] Қалталар құрылымы
