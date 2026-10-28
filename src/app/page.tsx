@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import Heatmap from "../components/Heatmap";
+import Header from "../components/Header";
 import type { Category, Habit } from "../types/habit";
 
 const categories: Category[] = ["Денсаулық", "Оқу", "Спорт", "Басқа"];
@@ -74,7 +74,7 @@ export default function Home() {
             <a href="#" className="opacity-80 hover:opacity-100">Статистика</a>
           </nav>
         </div>
-      </header>
+      <Header />
 
       <main className="mx-auto max-w-4xl space-y-6 px-4 py-8">
         {/* Статистика карточкалары */}
