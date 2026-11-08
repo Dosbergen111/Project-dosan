@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Панель управления - Chess Master</title>
+    <link rel="stylesheet" href="style.css">
+    <style>
+        .admin-container { padding: 20px; max-width: 1000px; margin: 0 auto; color: white; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #2a2a2a; }
+        th, td { padding: 12px; border: 1px solid #444; text-align: left; }
+        th { background: #1a1a1a; color: #00ff00; }
+        .btn-premium { background: #ff8c00; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px; margin-right: 5px; }
+        .btn-block { background: #ff4d4d; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px; }
+        .btn-unblock { background: #4CAF50; }
+        button:hover { opacity: 0.8; }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <h1>⚙️ Управление игроками</h1>
+        <button onclick="location.href='chess.html'">🔙 Вернуться к игре</button>
+        
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Игрок</th>
+                    <th>Elo</th>
+                    <th>Энергия</th>
+                    <th>Роль</th>
+                    <th>Статус</th>
+                    <th>Действие</th>
+                </tr>
+            </thead>
+            <tbody id="users-list">
+                </tbody>
+        </table>
+    </div>
+
+    <script>
+        // 1. Загрузка пользователей
+        async function loadUsers() {
+            try {
+                const res = await fetch('/admin/users');
+                const data = await res.json();
+                const tbody = document.getElementById('users-list');
+                tbody.innerHTML = '';
+
+                // Твой сервер шлет { users: [...] }
+                const users = data.users || data;
+
+                users.forEach(u => {
+                    tbody.innerHTML += `
+                        <tr>
+                            <td>${u.id}</td>
+                            <td>${u.username} ${u.is_premium ? '💎' : ''}</td>
+                            <td>${u.elo}</td>
+                            <td>${u.is_premium ? '∞' : u.energy}</td>
+                            <td>${u.role}</td>
+                            <td>${u.is_blocked ? '🔴 Забанен' : '🟢 Ок'}</td>
+                            <td>
+                                <button class="btn-premium" onclick="togglePremium(${u.id}, ${u.is_premium})">
+                                    ${u.is_premium ? 'Снять VIP' : 'Дать VIP'}
+                                </button>
+                                <button class="btn-block ${u.is_blocked ? 'btn-unblock' : ''}" 
+                                        onclick="toggleBlock(${u.id}, ${u.is_blocked})">
+                                    ${u.is_blocked ? 'Разбанить' : 'Забанить'}
+                                </button>
+                            </td>
+                        </tr>`;
+                });
+            } catch (err) {
+                console.error("Ошибка загрузки:", err);
+            }
+        }
+
+        // 2. Управление VIP
+        async function togglePremium(id, currentStatus) {
+            await fetch('/admin/toggle-premium', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, premiumStatus: !currentStatus })
+            });
+            loadUsers();
+        }
+
+        // 3. Управление Блокировкой
+        async function toggleBlock(id, currentStatus) {
+            await fetch('/admin/block', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, block: !currentStatus })
+            });
+            loadUsers();
+        }
+
+        // Автозапуск
+        document.addEventListener('DOMContentLoaded', loadUsers);
+    </script>
+</body>
+</html>

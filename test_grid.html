@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess Grid Test</title>
+    <style>
+        body {
+            background: #1a1a1a;
+            color: #e0e0e0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+        }
+
+        .board-grid-wrapper {
+            display: grid;
+            gap: 0;
+            background-color: #f0e6d2;
+            border: 3px solid #333;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            border-radius: 4px;
+            overflow: hidden;
+            
+            /* Medium размер */
+            grid-template-columns: 30px repeat(8, 60px);
+            grid-template-rows: 24px repeat(8, 60px);
+            width: 510px;
+            height: 504px;
+        }
+
+        .board-corner {
+            background-color: transparent;
+            grid-column: 1;
+            grid-row: 1;
+        }
+
+        .col-label {
+            background-color: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            color: #a0a0a0;
+            grid-row: 1;
+            height: 100%;
+            width: 100%;
+        }
+
+        .board-grid-wrapper > .col-label:nth-child(2) { grid-column: 2; }
+        .board-grid-wrapper > .col-label:nth-child(3) { grid-column: 3; }
+        .board-grid-wrapper > .col-label:nth-child(4) { grid-column: 4; }
+        .board-grid-wrapper > .col-label:nth-child(5) { grid-column: 5; }
+        .board-grid-wrapper > .col-label:nth-child(6) { grid-column: 6; }
+        .board-grid-wrapper > .col-label:nth-child(7) { grid-column: 7; }
+        .board-grid-wrapper > .col-label:nth-child(8) { grid-column: 8; }
+        .board-grid-wrapper > .col-label:nth-child(9) { grid-column: 9; }
+
+        .row-label {
+            background-color: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+            color: #a0a0a0;
+            grid-column: 1;
+            height: 100%;
+            width: 100%;
+        }
+
+        .board-grid-wrapper > .row-label:nth-child(10) { grid-row: 2; }
+        .board-grid-wrapper > .row-label:nth-child(11) { grid-row: 3; }
+        .board-grid-wrapper > .row-label:nth-child(12) { grid-row: 4; }
+        .board-grid-wrapper > .row-label:nth-child(13) { grid-row: 5; }
+        .board-grid-wrapper > .row-label:nth-child(14) { grid-row: 6; }
+        .board-grid-wrapper > .row-label:nth-child(15) { grid-row: 7; }
+        .board-grid-wrapper > .row-label:nth-child(16) { grid-row: 8; }
+        .board-grid-wrapper > .row-label:nth-child(17) { grid-row: 9; }
+
+        .board {
+            grid-column: 2 / -1;
+            grid-row: 2 / -1;
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            grid-template-rows: repeat(8, 1fr);
+            gap: 0;
+            width: 100%;
+            height: 100%;
+            border: none;
+            box-shadow: none;
+            background-color: transparent;
+        }
+
+        .square {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 45px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            user-select: none;
+            position: relative;
+            line-height: 1;
+            border: 1px solid #999;
+        }
+
+        .light {
+            background-color: #f0e6d2;
+        }
+
+        .dark {
+            background-color: #b58863;
+        }
+    </style>
+</head>
+<body>
+    <h2>Chess Board Grid Alignment Test</h2>
+    <div class="board-grid-wrapper">
+        <!-- Угловая пустая ячейка -->
+        <div class="board-corner"></div>
+        
+        <!-- Буквы колонн (A-H) -->
+        <div class="col-label">A</div>
+        <div class="col-label">B</div>
+        <div class="col-label">C</div>
+        <div class="col-label">D</div>
+        <div class="col-label">E</div>
+        <div class="col-label">F</div>
+        <div class="col-label">G</div>
+        <div class="col-label">H</div>
+        
+        <!-- Цифры рядов (8-1) слева от доски -->
+        <div class="row-label">8</div>
+        <div class="row-label">7</div>
+        <div class="row-label">6</div>
+        <div class="row-label">5</div>
+        <div class="row-label">4</div>
+        <div class="row-label">3</div>
+        <div class="row-label">2</div>
+        <div class="row-label">1</div>
+        
+        <!-- Доска -->
+        <div class="board" id="board"></div>
+    </div>
+
+    <script>
+        const board = document.getElementById('board');
+        for (let r = 0; r < 8; r++) {
+            for (let c = 0; c < 8; c++) {
+                const square = document.createElement('div');
+                square.className = 'square ' + (((r + c) % 2 === 0) ? 'light' : 'dark');
+                square.textContent = '';
+                board.appendChild(square);
+            }
+        }
+    </script>
+</body>
+</html>

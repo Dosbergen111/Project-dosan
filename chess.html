@@ -1,0 +1,630 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Шахматы - Chess Master</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <h1>♔ Chess Master ♚</h1>
+    <div class="header-right">
+        <div class="theme-toggle">
+            <label>
+                <input type="checkbox" id="theme-toggle">
+                🌙 
+            </label>
+        </div>
+        
+        <div id="user-profile" style="display:none;">
+            <span id="user-info">
+                Игрок: <strong id="user-name">-</strong><span id="vip-badge" class="vip-badge" style="display: none;">👑 VIP</span> | 
+                Рейтинг: <strong id="user-elo">-</strong> | 
+                Энергия: <strong id="user-energy">-</strong>
+                <span id="energy-timer-container" style="font-size: 0.8em; margin-left: 5px; color: #00ff00;">
+                    <span id="energy-timer"></span>
+                </span>
+            </span>
+            <button class="logout-button" onclick="logout()">🚪 Выйти</button>
+        </div>
+        <button id="buy-premium-btn" class="auth-button" style="background: linear-gradient(45deg, #ffd700, #ff8c00); color: black; margin-top: 10px; display:none;" onclick="window.location.href='pay.html'">
+            💎 Купить Premium 
+        </button>
+        <button id="login-button" class="auth-button" onclick="openAuthModal()">🔓 Войти / Регистрация</button>
+    </div>
+</header>
+    <!-- Модальное окно регистрации -->
+    <div id="auth-modal" class="auth-modal" style="display: none;">
+        <div class="auth-modal-content">
+            <div class="auth-modal-header">
+                <h2>⚡ Регистрация</h2>
+                <button class="auth-modal-close" onclick="closeAuthModal()">&times;</button>
+            </div>
+            
+            <form id="auth-form" onsubmit="handleAuth(event)">
+                <div class="auth-form-group">
+                    <label for="auth-username">Username</label>
+                    <input type="text" id="auth-username" placeholder="Введите ваш ник..." required />
+                </div>
+                
+                <div class="auth-form-group">
+                    <label for="auth-password">Password</label>
+                    <input type="password" id="auth-password" placeholder="Введите пароль..." required />
+                </div>
+                
+                <div id="auth-error" class="auth-error"></div>
+                
+                <button type="submit" class="auth-submit-btn">🚀 Зарегистрироваться</button>
+            </form>
+            
+            <div class="auth-modal-footer">
+                <p>Уже регистрировались? <a href="#" onclick="toggleAuthMode()">Войти</a></p>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="tabs">
+            <button class="tab-button" onclick="showTab('game')" data-tab="game">🎮 Игра</button>
+            <button class="tab-button" onclick="showTab('rules')" data-tab="rules">📖 Правила</button>
+            <button class="tab-button" onclick="showTab('chat')" data-tab="chat">💬 Чат</button>
+            <button class="tab-button" onclick="showTab('leaderboard')" data-tab="leaderboard">🏆 Лидеры</button>
+            <button class="tab-button" onclick="showTab('history')" data-tab="history">📊 История</button>
+            <button class="tab-button" onclick="showTab('analyze')" data-tab="analyze">🔍 Анализ</button>
+            <button class="tab-button" onclick="showTab('settings')" data-tab="settings">⚙️ Настройки</button>
+            <button class="tab-button" onclick="showTab('about')" data-tab="about">ℹ️ О программе</button>
+        </div>
+
+        <div id="landing" class="tab-content active">
+            <div class="landing-container">
+                <div class="landing-content">
+                    <div class="landing-title">
+                        <span class="title-emoji">♔</span>
+                        <h2>Chess Master</h2>
+                        <span class="title-emoji">♚</span>
+                    </div>
+                    <p class="landing-subtitle">Стратегическая игра для истинных мастеров</p>
+                    
+                    <button class="play-button-main" onclick="startGameFromLanding()">
+                        🎮 Играть
+                    </button>
+                    
+                    <div class="landing-features">
+                        <div class="feature-item">✨ Играй против AI</div>
+                        <div class="feature-item">📊 Отслеживай рейтинг</div>
+                        <div class="feature-item">⏱️ Режим с таймером</div>
+                    </div>
+                    
+                    <div class="landing-stats">
+                        <div class="stat-mini">
+                            <div class="stat-mini-value" id="landing-elo">1200</div>
+                            <div class="stat-mini-label">Ваш Elo</div>
+                        </div>
+                        <div class="stat-mini">
+                            <div class="stat-mini-value" id="landing-games">0</div>
+                            <div class="stat-mini-label">Всего игр</div>
+                        </div>
+                        <div class="stat-mini">
+                            <div class="stat-mini-value" id="landing-wins">0</div>
+                            <div class="stat-mini-label">Побед</div>
+                        </div>
+                    </div>
+                    
+                    <div class="landing-ai-tips">
+                        <div class="tip-title">💡 Совет</div>
+                        <div class="tip-text" id="landing-tip">Выбери уровень сложности и начни играть!</div>
+                    </div>
+                </div>
+                
+                <div class="landing-footer">
+                    <button class="home-button" onclick="showTab('game')">← В игру</button>
+                    <button class="settings-button" onclick="showTab('settings')" title="Настройки">⚙️</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="game" class="tab-content">
+            <div class="game-top-panel">
+                <div class="status" id="status">Ход белых</div>
+                
+                <div class="timer-display">
+                    <div class="timer-white">
+                        <span class="timer-label">⚪ Белые</span>
+                        <span class="timer-value" id="white-time-big">10:00</span>
+                    </div>
+                    <div class="timer-black">
+                        <span class="timer-label">⚫ Чёрные</span>
+                        <span class="timer-value" id="black-time-big">10:00</span>
+                    </div>
+                </div>
+                
+                <div class="board-size-quick">
+                    <label>📐 Размер:</label>
+                    <button onclick="quickSetBoardSize('small', this)" class="size-btn">S</button>
+                    <button onclick="quickSetBoardSize('medium', this)" class="size-btn active">M</button>
+                    <button onclick="quickSetBoardSize('large', this)" class="size-btn">L</button>
+                </div>
+            </div>
+            
+            <div class="board-wrapper">
+                <div class="board-grid-wrapper">
+                    <!-- Угловая пустая ячейка -->
+                    <div class="board-corner"></div>
+                    
+                    <!-- Буквы колонн (A-H) -->
+                    <div class="col-label">A</div>
+                    <div class="col-label">B</div>
+                    <div class="col-label">C</div>
+                    <div class="col-label">D</div>
+                    <div class="col-label">E</div>
+                    <div class="col-label">F</div>
+                    <div class="col-label">G</div>
+                    <div class="col-label">H</div>
+                    
+                    <!-- Цифры рядов (8-1) слева от доски -->
+                    <div class="row-label">8</div>
+                    <div class="row-label">7</div>
+                    <div class="row-label">6</div>
+                    <div class="row-label">5</div>
+                    <div class="row-label">4</div>
+                    <div class="row-label">3</div>
+                    <div class="row-label">2</div>
+                    <div class="row-label">1</div>
+                    
+                    <!-- Доска -->
+                    <div class="board" id="board"></div>
+                </div>
+                
+                <!-- Материальный баланс рядом с доской -->
+                <div class="material-balance" id="material-balance"></div>
+            </div>
+
+            <div class="moves-panel">
+                <div class="current-moves" id="current-moves"></div>
+            </div>
+
+            <div class="controls">
+                <label>⏱️ Время на партию:</label>
+                <div class="button-group">
+                    <button onclick="setTime(60)">1м</button>
+                    <button onclick="setTime(180)">3м</button>
+                    <button onclick="setTime(300)">5м</button>
+                    <button onclick="setTime(600)">10м</button>
+                    <button onclick="setTime(900)">15м</button>
+                    <button onclick="setTime(1800)">30м</button>
+                </div>
+                <div id="premium-settings" style="display: none; border: 2px solid #ffd700; background: rgba(255, 215, 0, 0.1); padding: 18px; border-radius: 12px; margin: 20px 0; box-shadow: 0 0 20px rgba(255, 215, 0, 0.25);">
+                    <h3 style="color: #ffd700; margin: 0 0 10px 0; font-size: 1.1em;">💎 VIP Меню</h3>
+                    <div class="premium-row">
+                        <span>Золотой интерфейс:</span>
+                        <label class="switch">
+                            <input type="checkbox" id="premium-theme-checkbox" onclick="togglePremiumTheme()">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <div class="premium-row" style="margin-top: 12px; flex-wrap: wrap; gap: 8px; align-items: center;">
+                        <span style="flex: 1 1 150px; color: white;">Набор фигур:</span>
+                        <div>
+                            <button class="premium-piece-btn" data-set="classic" onclick="changePieceSet('classic')">Классика</button>
+                            <button class="premium-piece-btn" data-set="gold" onclick="changePieceSet('gold')">Золото</button>
+                            <button class="premium-piece-btn" data-set="cyberpunk" onclick="changePieceSet('cyberpunk')">Киберпанк</button>
+                        </div>
+                    </div>
+                    <div class="premium-row" style="margin-top: 12px; justify-content: space-between; align-items: center;">
+                        <span style="color: white;">Режим слепой доски:</span>
+                        <label class="switch">
+                            <input type="checkbox" id="blindboard-toggle" onchange="toggleBlindBoard()">
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                    <small style="color: #ffd700; font-size: 0.8rem; margin-top: 10px; display: block;">*VIP-уровень открывает эксклюзивные визуалы и Гроссмейстер.</small>
+                </div>
+                <label>🎯 Режим игры:</label>
+                <div class="button-group">
+                    <button onclick="setGameMode('pvp')">👥 Человек vs Человек</button>
+                    <button onclick="setGameMode('pvc')">🤖 vs Компьютер (Stockfish)</button>
+                </div>
+                
+                <label id="player-color-label" style="display:none;">Играть за:</label>
+                <div class="button-group" id="player-color-buttons" style="display:none;">
+                    <button onclick="setPlayerColor('white')">⚪ Белые</button>
+                    <button onclick="setPlayerColor('black')">⚫ Чёрные</button>
+                </div>
+
+                <label id="difficulty-label" style="display:none;">🎚️ Уровень сложности:</label>
+                <div class="button-group" id="difficulty-buttons" style="display:none;">
+                    <button onclick="setDifficulty(1)">🟢 Новичок</button>
+                    <button onclick="setDifficulty(5)">🟡 Средний</button>
+                    <button onclick="setDifficulty(10)">🔴 Мастер</button>
+                    <button onclick="setDifficulty(20)">🔴 Гроссмейстер</button>
+                </div>
+                
+                <div id="opponent-info" style="display:none; margin-top: 20px; padding: 15px; background-color: var(--rules-bg); border-radius: 8px; border: 2px solid var(--accent); text-align: center;">
+                    <div style="font-size: 12px; color: var(--secondary-text); text-transform: uppercase; margin-bottom: 8px;">Соперник</div>
+                    <div id="opponent-skill" style="font-size: 16px; font-weight: 600; margin-bottom: 8px;">-</div>
+                    <div id="opponent-rating" style="font-size: 24px; color: var(--accent); font-weight: 700; font-family: 'Courier New', monospace; margin-bottom: 8px;">1500 Elo</div>
+                    <div id="opponent-stars" style="font-size: 18px; letter-spacing: 4px;">★★★☆☆</div>
+                </div>
+            </div>
+
+
+            <div class="button-row">
+                <button onclick="undoMove()">↶ Отменить ход</button>
+                <button onclick="showHint()" title="Показать лучший ход">💡 Подсказка</button>
+                <button class="primary" onclick="resetGame()">🔄 Новая игра</button>
+                <button class="danger" onclick="resignGame()">🚩 Сдаться</button>
+                <button onclick="agreeToDrawGame()" title="Согласиться на ничью">🤝 Ничья</button>
+                <button onclick="stopGame()" title="Остановить игру">🛑 Остановить</button>
+                <button onclick="copyFEN()">📋 FEN</button>
+                <button onclick="toggleAnimations()">✨ Анимация</button>
+            </div>
+
+            <div style="margin-top: 15px; text-align: center;">
+                <input type="text" id="fen-input" placeholder="Вставьте FEN позицию..." style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border-color); background: var(--tab-bg); color: var(--text-color);" />
+                <button onclick="loadFromFEN()" style="margin-top: 8px; width: 100%;">Загрузить позицию</button>
+            </div>
+        </div>
+
+        <div id="rules" class="tab-content">
+            <div class="rules">
+                <h2>📚 Правила шахмат</h2>
+                <p>Шахматы — это стратегическая настольная игра для двух игроков. Цель игры — поставить мат королю противника, то есть создать ситуацию, когда король находится под шахом и нет возможности уйти от шаха.</p>
+                
+                <h3>♟️ Фигуры и их ходы:</h3>
+                <ul>
+                    <li><strong>Король (♔ ♚):</strong> Ходит на одну клетку в любом направлении. Может рокироваться. Это самая важная фигура.</li>
+                    <li><strong>Ферзь (♕ ♛):</strong> Ходит по горизонтали, вертикали и диагонали на любое количество клеток. Самая сильная фигура.</li>
+                    <li><strong>Ладья (♖ ♜):</strong> Ходит по горизонтали и вертикали на любое количество клеток.</li>
+                    <li><strong>Слон (♗ ♝):</strong> Ходит по диагонали на любое количество клеток. Белопольные и чёрнопольные слоны.</li>
+                    <li><strong>Конь (♘ ♞):</strong> Ходит буквой "Г" — две клетки в одном направлении и одна в перпендикулярном. Единственная фигура, которая прыгает.</li>
+                    <li><strong>Пешка (♙ ♟):</strong> Ходит вперед на одну клетку, бьет по диагонали. С начальной позиции может ходить на две клетки.</li>
+                </ul>
+
+                <h3>⚔️ Особые ходы:</h3>
+                <ul>
+                    <li><strong>Рокировка:</strong> Король и ладья меняются местами. Выполняется один раз в партии для каждого игрока.</li>
+                    <li><strong>Взятие на проходе:</strong> Пешка может взять пешку противника, которая прошла мимо её на две клетки.</li>
+                    <li><strong>Превращение пешки:</strong> Пешка, достигшая последней горизонтали, превращается в ферзя.</li>
+                </ul>
+
+                <h3>✔️ Результаты игры:</h3>
+                <ul>
+                    <li><strong>Шах:</strong> Король под атакой, но есть способ защиты.</li>
+                    <li><strong>Мат:</strong> Король под шахом и нет возможности защиты. Конец игры — проигрыш.</li>
+                    <li><strong>Пат:</strong> Ход нет, король не под шахом. Ничья.</li>
+                    <li><strong>Ничья:</strong> По согласию сторон, если одинаковое положение повторилось 3 раза, или нет материала для мата.</li>
+                </ul>
+
+                <p><em>Игра продолжается до мата, пата или ничьей.</em></p>
+            </div>
+        </div>
+
+        <div id="leaderboard" class="tab-content">
+            <div class="leaderboard-panel">
+                <h2>🏆 Таблица Лидеров</h2>
+                <div id="leaderboard-content">
+                    <div class="leaderboard-loading">Загрузка лидеров...</div>
+                </div>
+                <button onclick="loadLeaderboard()" class="refresh-btn">🔄 Обновить</button>
+            </div>
+        </div>
+
+        <div id="chat" class="tab-content">
+            <div class="chat-panel">
+                <h2>💬 Глобальный чат</h2>
+                <div id="chat-box" class="chat-box">Загрузка сообщений...</div>
+                <div class="chat-input-row">
+                    <input type="text" id="chat-input" placeholder="Напишите сообщение..." autocomplete="off" />
+                    <button onclick="sendMessage()">Отправить</button>
+                </div>
+                <div class="chat-note">Чат доступен всем пользователям. Для VIP доступен специальный стиль и набор эмодзи.</div>
+            </div>
+        </div>
+
+        <div id="analyze" class="tab-content">
+            <div class="analyze-panel">
+                <h2>🔍 Анализ позиции</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <label>Оценка позиции:</label>
+                        <div id="position-eval">0.0</div>
+                    </div>
+                    <div class="stat-box">
+                        <label>Материал белых:</label>
+                        <div id="white-material">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <label>Материал чёрных:</label>
+                        <div id="black-material">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <label>Возможных ходов:</label>
+                        <div id="legal-moves">20</div>
+                    </div>
+                </div>
+                <h3>Статистика партии:</h3>
+                <div id="game-stats">Начните новую игру для анализа</div>
+                <h3>Экспорт:</h3>
+                <div class="button-row">
+                    <button onclick="exportPGN()">📄 Скачать PGN</button>
+                    <button onclick="exportJSON()">📦 Скачать JSON</button>
+                    <button onclick="shareGame()">🔗 Поделиться</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="settings" class="tab-content">
+            <div class="settings-panel">
+                <h2>⚙️ Настройки</h2>
+                
+                <div class="settings-group">
+                    <label>
+                        <input type="checkbox" id="sound-toggle" checked /> 🔊 Звуки ходов
+                    </label>
+                </div>
+
+                <div class="settings-group">
+                    <label>
+                        <input type="checkbox" id="animation-toggle" checked /> ✨ Анимация ходов
+                    </label>
+                </div>
+
+                <div class="settings-group">
+                    <label>
+                        <input type="checkbox" id="coordinates-toggle" checked /> 📍 Показать координаты
+                    </label>
+                </div>
+
+                <div class="settings-group">
+                    <label>
+                        <input type="checkbox" id="material-toggle" checked /> ⚖️ Оценка материала
+                    </label>
+                </div>
+
+                <div class="settings-group">
+                    <label>Стиль доски:</label>
+                    <select id="board-style" onchange="changeboardStyle()">
+                        <option value="default">Классический</option>
+                        <option value="blue">Синий</option>
+                        <option value="green">Зелёный</option>
+                        <option value="wood">Дерево</option>
+                    </select>
+                </div>
+
+                <div class="settings-group">
+                    <label>Размер доски:</label>
+                    <select id="board-size" onchange="changeBoardSize()">
+                        <option value="small">Маленькая</option>
+                        <option value="medium" selected>Средняя</option>
+                        <option value="large">Большая</option>
+                    </select>
+                </div>
+                <div class="settings-group">
+                    <label>Тёмная тема:</label>
+                    <label class="switch">
+                        <input type="checkbox" id="theme-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="settings-group">
+                    <label><strong>♛ Ваш рейтинг Elo:</strong></label>
+                    <div class="elo-display">
+                        <div class="elo-rating-big" id="elo-rating">1200</div>
+                        <div class="elo-category" id="elo-category">Средний уровень</div>
+                    </div>
+                    <input type="range" id="elo-slider" min="800" max="3000" value="1200" onchange="updateElo()" style="width: 100%;" />
+                    
+                    <div class="elo-history-title">📈 История последних 10 игр:</div>
+                    <div id="elo-history-list" class="elo-history-list"></div>
+                </div>
+
+                <div class="settings-group">
+                    <label><strong>🔐 Смена пароля:</strong></label>
+                    <form id="change-password-form" onsubmit="handleChangePassword(event)">
+                        <input type="password" id="old-password" placeholder="Текущий пароль" required />
+                        <input type="password" id="new-password" placeholder="Новый пароль (мин. 6 символов)" required minlength="6" />
+                        <button type="submit">🔄 Изменить пароль</button>
+                    </form>
+                </div>
+
+                <div class="settings-group premium-only">
+                    <label>Набор фигур VIP:</label>
+                    <select id="piece-set-select" onchange="changePieceSet(this.value)">
+                        <option value="classic">Классика</option>
+                        <option value="gold">Золото</option>
+                        <option value="cyberpunk">Киберпанк</option>
+                    </select>
+                </div>
+                <div class="settings-group premium-only" id="premium-sound-wrapper" style="display:none;">
+                    <label>
+                        <input type="checkbox" id="premium-sound-toggle" /> 💎 Премиум-звуки (VIP)
+                    </label>
+                </div>
+                <div class="settings-group">
+                    <button class="danger" onclick="clearHistory()">🗑️ Очистить историю</button>
+                    <button onclick="exportSettings()">💾 Экспортировать настройки</button>
+                    <button onclick="document.getElementById('import-file').click()">📂 Импортировать настройки</button>
+                    <input type="file" id="import-file" style="display:none;" onchange="importSettings()" />
+                </div>
+            </div>
+        </div>
+
+        <div id="history" class="tab-content">
+            <div class="game-history">
+                <h2>📊 История партий</h2>
+                <div class="history-filters">
+                    <input type="text" id="filter-search" placeholder="🔍 Поиск по датам..." onkeyup="filterHistory()" />
+                    <select id="filter-result" onchange="filterHistory()">
+                        <option value="all">Все</option>
+                        <option value="win">Победы</option>
+                        <option value="loss">Поражения</option>
+                        <option value="draw">Ничьи</option>
+                    </select>
+                </div>
+                <div class="statistics" style="margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-label">Всего партий</div>
+                        <div class="stat-value" id="stat-total">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Побед</div>
+                        <div class="stat-value" id="stat-wins">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Поражений</div>
+                        <div class="stat-value" id="stat-losses">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Ничьих</div>
+                        <div class="stat-value" id="stat-draws">0</div>
+                    </div>
+                </div>
+                <div id="premium-stats" class="statistics premium" style="display:none; margin-bottom: 30px;">
+                    <div class="stat-card">
+                        <div class="stat-label">Winrate VIP</div>
+                        <div class="stat-value" id="stat-winrate">0%</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Лучший стрик</div>
+                        <div class="stat-value" id="stat-streak">0</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Любимый дебют</div>
+                        <div class="stat-value" id="stat-opening">Нет данных</div>
+                    </div>
+                </div>
+                <div id="game-history"></div>
+                <div id="no-history" class="no-games">
+                    <p>📭 Никаких сохранённых партий. Сыграйте свою первую партию!</p>
+                </div>
+                <div style="margin-top: 20px; text-align: center;">
+                    <button onclick="document.getElementById('history-file').click()">📥 Импортировать историю</button>
+                    <button onclick="downloadHistory()">📤 Скачать всю историю</button>
+                    <input type="file" id="history-file" style="display:none;" onchange="uploadHistory()" />
+                </div>
+            </div>
+        </div>
+
+        <div id="about" class="tab-content">
+            <div class="about">
+                <h2>ℹ️ О программе</h2>
+                <p>Добро пожаловать на <strong>Chess Master</strong> — минималистичный, но полнофункциональный шахматный сайт, вдохновлённый chess.com и lichess.org.</p>
+                
+                <h3>🎮 Возможности:</h3>
+                <ul>
+                    <li>✅ Полная поддержка всех правил шахмат</li>
+                    <li>✅ Умный шахматный алгоритм для обнаружения шаха, мата и пата</li>
+                    <li>✅ Игра против умного AI с 4 уровнями сложности</li>
+                    <li>✅ Таймер для партий с временным контролем</li>
+                    <li>✅ Темный и светлый режимы</li>
+                    <li>✅ История всех ваших партий с результатами</li>
+                    <li>✅ Подсказки для лучших ходов</li>
+                    <li>✅ Анализ позиции в реальном времени</li>
+                    <li>✅ Отмена ходов и отмена партий</li>
+                    <li>✅ Красивый, интуитивный интерфейс</li>
+                    <li>✅ Полная поддержка мобильных устройств</li>
+                </ul>
+
+                <h3>🏗️ Технология:</h3>
+                <ul>
+                    <li>🔧 Написано на чистом HTML, CSS и JavaScript</li>
+                    <li>💾 Использует localStorage для сохранения истории</li>
+                    <li>⚡ Быстро работает во всех современных браузерах</li>
+                    <li>🎨 Адаптивный дизайн для компьютеров, планшетов и телефонов</li>
+                </ul>
+
+                <h3>🎯 Как играть:</h3>
+                <ol style="margin: 15px 0; padding-left: 20px;">
+                    <li>Выберите участников игры в разделе "Играть за"</li>
+                    <li>Установите время для партии</li>
+                    <li>Нажмите "Новая игра"</li>
+                    <li>Кликайте на фигуры, чтобы выбрать и делать ходы</li>
+                    <li>Используйте "Отменить ход" для отмены последнего хода</li>
+                    <li>Нажмите "Сдаться" если вы хотите прекратить игру</li>
+                </ol>
+
+                <h3>💡 Советы:</h3>
+                <ul>
+                    <li>🌙 Переключайте режиму в тёмный/светлый по вашему предпочтению</li>
+                    <li>📱 Сайт работает на любых устройствах</li>
+                    <li>💾 Все партии сохраняются автоматически</li>
+                    <li>🔄 Нажмите "Новая игра" чтобы начать с нуля</li>
+                </ul>
+
+                <div style="margin-top: 30px; padding-top: 20px; border-top: 2px solid var(--border-color); color: var(--secondary-text); font-size: 12px;">
+                    <p>© 2026 Chess Master. Это свободное ПО, созданное для развлечения и обучения.</p>
+                    <p>Все механики соответствуют официальным правилам ФИДЕ шахмат.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/stockfish@10.0.2/src/stockfish.js"></script>
+    <script src="script.js"></script>
+
+    <script>
+    /**
+     * 🎯 ЕДИНАЯ ТОЧКА ИНИЦИАЛИЗАЦИИ ПРИЛОЖЕНИЯ
+     * Порядок критичен: сначала права доступа, потом движок
+     */
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log("🎯 [INIT] Chess Master: Холодный запуск...");
+
+        // ФАЗА 1: ВОССТАНОВЛЕНИЕ СОСТОЯНИЯ ПОЛЬЗОВАТЕЛЯ
+        if (typeof checkAuth === 'function') {
+            checkAuth(); // Восстанавливает currentUser и вызывает updateUI()
+        } else {
+            console.warn("⚠️ checkAuth не найдена");
+        }
+
+        // ФАЗА 2: ПРИМЕНЕНИЕ VIP-НАСТРОЕК
+        if (typeof checkPremiumSettings === 'function') {
+            checkPremiumSettings();
+        } else {
+            console.warn("⚠️ checkPremiumSettings не найдена");
+        }
+
+        // ФАЗА 3: ИНИЦИАЛИЗАЦИЯ ТЯЖЕЛЫХ КОМПОНЕНТОВ (Stockfish, UI)
+        // Stockfish инициализируется здесь ОДИН РАЗ
+        if (typeof initStockfish === 'function') {
+            initStockfish();
+        } else {
+            console.warn("⚠️ initStockfish не найдена");
+        }
+
+        // ФАЗА 4: ВОССТАНОВЛЕНИЕ ПОСЛЕДНЕЙ ВКЛАДКИ
+        const lastTab = localStorage.getItem('currentTab') || 'landing';
+        if (typeof showTab === 'function') {
+            showTab(lastTab);
+        } else {
+            console.warn("⚠️ showTab не найдена");
+        }
+
+        // ФАЗА 5: УВЕДОМЛЕНИЕ О ГОТОВНОСТИ + СТАТУС АВТОРИЗАЦИИ
+        const userData = localStorage.getItem('userData');
+        if (userData) {
+            try {
+                const user = JSON.parse(userData);
+                let welcomeMsg = `✅ Добро пожаловать, ${user.username}!`;
+                if (user.role === 'admin') {
+                    welcomeMsg += ' 👑 [Администратор]';
+                }
+                if (user.is_premium) {
+                    welcomeMsg += ' 💎 [Premium активен]';
+                }
+                if (typeof showNotification === 'function') {
+                    showNotification(welcomeMsg, 'success');
+                }
+            } catch (e) {
+                console.error("Ошибка парса userData", e);
+            }
+        }
+
+        console.log("✅ [INIT] Инициализация завершена");
+    });
+
+    // ⚠️ УБИРАЕМ дублирование! window.addEventListener('load') больше НЕ используется для Stockfish
+    </script>
+</body>
+</html>
