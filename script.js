@@ -1,6 +1,8 @@
 const boardElement = document.getElementById('board');
+const puzzleBoardElement = document.getElementById('puzzle-board');
 const statusElement = document.getElementById('status');
 const themeToggle = document.getElementById('theme-toggle');
+const settingsThemeToggle = document.getElementById('theme-toggle-settings');
 
 let board = [];
 let currentPlayer = 'white';
@@ -19,9 +21,18 @@ let currentBoardStyle = 'default';
 let currentBoardSize = 'medium';
 let currentPieceSet = 'classic';
 let blindBoardActive = false;
+let historyReplay = null;
+let hintsUsedThisGame = false;
+let hintRequestPending = false;
+let gameSaved = false;
+let computerMoveTimeout = null;
+let gameGeneration = 0;
 
-const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+let audioContext = null;
 async function getAudioContext() {
+    const AudioContextConstructor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextConstructor) return null;
+    if (!audioContext) audioContext = new AudioContextConstructor();
     if (audioContext.state === 'suspended') {
         try {
             await audioContext.resume();
@@ -31,7 +42,6 @@ async function getAudioContext() {
     }
     return audioContext;
 }
-let playerElo = 1200;
 let eloHistory = [];
 let eloGainedInLastGame = 0;
 
@@ -39,9 +49,41 @@ let eloGainedInLastGame = 0;
 let gameMode = 'pvp'; // 'pvp' = человек vs человек, 'pvc' = человек vs компьютер
 let playerColor = 'white';
 let difficulty = 10; // 1-20, чем выше, тем сложнее
+let activeGameMode = 'pvp';
+let activeGameDifficulty = 10;
 let isComputerThinking = false;
 let stockfish = null;
+let stockfishLoadingPromise = null;
+let stockfishWorkerUrl = null;
 let boardFlipped = false; // Переворот доски для чёрных игроков
+let chatRefreshTimeout = null;
+let resetGamePending = false;
+
+if (boardElement) {
+    boardElement.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const square = target.closest('.square');
+        if (!square || !boardElement.contains(square)) return;
+        const row = Number(square.dataset.row);
+        const col = Number(square.dataset.col);
+        if (Number.isInteger(row) && Number.isInteger(col)) {
+            handleSquareClick(row, col);
+        }
+    });
+}
+
+if (puzzleBoardElement) {
+    puzzleBoardElement.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const square = target.closest('.puzzle-square');
+        if (!square || !puzzleBoardElement.contains(square)) return;
+        const row = Number(square.dataset.row);
+        const col = Number(square.dataset.col);
+        if (Number.isInteger(row) && Number.isInteger(col)) handlePuzzleSquareClick(row, col);
+    });
+}
 
 const pieces = {
     'white': { 'king': '♔', 'queen': '♕', 'rook': '♖', 'bishop': '♗', 'knight': '♘', 'pawn': '♙' },
@@ -68,9 +110,28 @@ function getPieceSymbol(piece) {
     return activeSet[piece.color][piece.type] || pieces[piece.color][piece.type];
 }
 
+async function refreshUserProfile(userId) {
+    if (!userId) return;
+    try {
+        const response = await fetch(`/api/profile?userId=${encodeURIComponent(userId)}`);
+        if (!response.ok) throw new Error(`Profile request failed: ${response.status}`);
+        const profile = await response.json();
+        const current = JSON.parse(localStorage.getItem('userData') || 'null');
+        if (!current || String(current.id) !== String(profile.id)) return;
+        const updated = { ...current, ...profile };
+        updated.is_premium = profile.is_premium === true;
+        updated.energy = Math.max(0, Math.min(5, Number(profile.energy) || 0));
+        currentUser = updated;
+        localStorage.setItem('userData', JSON.stringify(updated));
+        updateUI();
+    } catch (error) {
+        console.error('Ошибка обновления профиля:', error);
+    }
+}
+
 function changePieceSet(setName) {
     const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-    if ((setName === 'gold' || setName === 'cyberpunk') && !userData.is_premium) {
+    if ((setName === 'gold' || setName === 'cyberpunk') && userData.is_premium !== true) {
         showNotification('👑 Премиум-история: эти наборы доступны только VIP-пользователям', 'warning');
         return;
     }
@@ -97,6 +158,7 @@ function toggleBlindBoard() {
     blindBoardActive = checkbox.checked;
     localStorage.setItem('blindBoardActive', blindBoardActive);
     boardElement.classList.toggle('blindboard-mode', blindBoardActive);
+    if (gameActive) renderBoard();
 }
 
 let whiteTime = 600;
@@ -104,22 +166,212 @@ let blackTime = 600;
 let timerInterval;
 let selectedTime = 600;
 let gameMoves = [];
+let analysisRunning = false;
+let analysisMoves = [];
+let analysisResults = [];
+let analysisPositionIndex = 0;
+let analysisRunToken = 0;
+let cancelStockfishAnalysisWait = null;
+let puzzleBoard = null;
+let puzzleSelectedSquare = null;
+let puzzleCastlingRights = null;
+let puzzleEnPassantTarget = null;
+let puzzleCurrentIndex = 0;
+let puzzleSolvedCount = 0;
+let puzzleProgressKey = '';
+let puzzleHighlightedMove = null;
+let onlineRoom = null;
+let onlinePollTimeout = null;
+let onlinePollGeneration = 0;
+let onlinePollInFlight = false;
+let onlineMovePending = false;
+let onlineFinishPending = null;
+let onlineLastAppliedVersion = -1;
 
-// Инициализация Stockfish
-function initStockfish() {
-    if (typeof Stockfish === 'undefined') {
-        console.warn('Stockfish не загружен. Скачивание...');
-        return;
+const dailyPuzzles = [
+    {
+        id: 'back-rank-mate',
+        fen: '6k1/5ppp/8/8/8/8/5PPP/3R2K1 w - - 0 1',
+        move: 'd1d8',
+        comment: 'Ладья проходит по открытой линии и ставит мат по последнему ряду.'
+    },
+    {
+        id: 'queen-capture-rook',
+        fen: '6k1/8/8/8/8/8/6q1/6RK w - - 0 1',
+        move: 'g1g2',
+        comment: 'Король под шахом: ладья может немедленно забрать ферзя.'
+    },
+    {
+        id: 'bishop-wins-queen',
+        fen: '6k1/8/8/8/8/8/3q4/2B3K1 w - - 0 1',
+        move: 'c1d2',
+        comment: 'Слон берёт ферзя на соседней диагонали.'
+    },
+    {
+        id: 'knight-fork',
+        fen: '4k3/7q/8/8/4N3/8/8/6K1 w - - 0 1',
+        move: 'e4f6',
+        comment: 'Конь с шахом нападает на ферзя: после ухода короля ферзь будет потерян.'
+    },
+    {
+        id: 'scholars-mate',
+        fen: 'r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 0 4',
+        move: 'h5f7',
+        comment: 'Ферзь берёт пешку f7 при поддержке слона — мат королю.'
     }
-    new Stockfish().then(sf => {
-        stockfish = sf;
-        console.log('✅ Stockfish готов!');
-    }).catch(err => {
-        console.error('❌ Ошибка загрузки Stockfish:', err);
+];
+
+const STOCKFISH_SCRIPT_URL = 'https://cdn.jsdelivr.net/npm/stockfish@10.0.2/src/stockfish.js';
+const STOCKFISH_WASM_URL = 'https://cdn.jsdelivr.net/npm/stockfish@10.0.2/src/stockfish.wasm';
+
+// Stockfish is loaded into a dedicated worker only when a hint, analysis, or bot move needs it.
+function initStockfish() {
+    if (stockfish) return Promise.resolve(stockfish);
+    if (stockfishLoadingPromise) return stockfishLoadingPromise;
+
+    stockfishLoadingPromise = new Promise((resolve, reject) => {
+        if (typeof Worker !== 'function' || typeof URL.createObjectURL !== 'function') {
+            reject(new Error('Этот браузер не поддерживает worker для Stockfish.'));
+            return;
+        }
+
+        const workerSource = `importScripts(${JSON.stringify(STOCKFISH_SCRIPT_URL)});`;
+        const workerBlob = new Blob([workerSource], { type: 'text/javascript' });
+        const workerUrl = URL.createObjectURL(workerBlob);
+        let engine;
+        try {
+            engine = new Worker(`${workerUrl}#${STOCKFISH_WASM_URL}`);
+        } catch (error) {
+            URL.revokeObjectURL(workerUrl);
+            reject(new Error(`Не удалось запустить worker Stockfish: ${error.message}`));
+            return;
+        }
+        stockfishWorkerUrl = workerUrl;
+        stockfish = engine;
+
+        let readyTimeout;
+        let receivedUciOk = false;
+        const cleanup = () => {
+            clearTimeout(readyTimeout);
+            engine.removeEventListener('message', onMessage);
+            engine.removeEventListener('error', onError);
+        };
+        const fail = (error) => {
+            cleanup();
+            engine.terminate();
+            URL.revokeObjectURL(workerUrl);
+            if (stockfish === engine) stockfish = null;
+            if (stockfishWorkerUrl === workerUrl) stockfishWorkerUrl = null;
+            reject(error);
+        };
+        const onMessage = (event) => {
+            const message = getStockfishMessage(event);
+            if (message.includes('uciok') && !receivedUciOk) {
+                receivedUciOk = true;
+                engine.postMessage('isready');
+            } else if (receivedUciOk && message.includes('readyok')) {
+                cleanup();
+                resolve(engine);
+            }
+        };
+        const onError = (event) => {
+            fail(new Error(`Ошибка worker Stockfish: ${event.message || 'неизвестная ошибка'}`));
+        };
+
+        readyTimeout = setTimeout(
+            () => fail(new Error('Stockfish не ответил при запуске за 20 секунд.')),
+            20000
+        );
+        engine.addEventListener('message', onMessage);
+        engine.addEventListener('error', onError);
+        engine.postMessage('uci');
+    }).catch(error => {
+        stockfishLoadingPromise = null;
+        throw error;
+    });
+
+    return stockfishLoadingPromise;
+}
+
+function stopStockfish() {
+    if (stockfish) {
+        try {
+            if (typeof stockfish.terminate === 'function') {
+                stockfish.terminate();
+            } else {
+                stockfish.postMessage('quit');
+            }
+        } catch (error) {
+            console.warn('Не удалось остановить Stockfish:', error);
+        }
+    }
+    stockfish = null;
+    stockfishLoadingPromise = null;
+    if (stockfishWorkerUrl) {
+        URL.revokeObjectURL(stockfishWorkerUrl);
+        stockfishWorkerUrl = null;
+    }
+}
+
+function getStockfishMessage(event) {
+    return typeof event === 'string' ? event : String(event?.data || '');
+}
+
+function waitForStockfishReady(engine) {
+    return new Promise((resolve, reject) => {
+        const finish = (error) => {
+            clearTimeout(timeout);
+            engine.removeEventListener('message', onMessage);
+            if (cancelStockfishAnalysisWait === cancel) cancelStockfishAnalysisWait = null;
+            if (error) reject(error);
+            else resolve();
+        };
+        const cancel = () => finish(new Error('Stockfish analysis cancelled.'));
+        const onMessage = (event) => {
+            if (getStockfishMessage(event).includes('readyok')) finish();
+        };
+        const timeout = setTimeout(() => finish(new Error('Stockfish readiness timed out.')), 10000);
+        cancelStockfishAnalysisWait = cancel;
+        engine.addEventListener('message', onMessage);
+        engine.postMessage('isready');
+    });
+}
+
+function requestStockfishEvaluation(engine, uciMoves) {
+    return new Promise((resolve, reject) => {
+        let evaluation = null;
+        const finish = (error, value) => {
+            clearTimeout(timeout);
+            engine.removeEventListener('message', onMessage);
+            if (cancelStockfishAnalysisWait === cancel) cancelStockfishAnalysisWait = null;
+            if (error) reject(error);
+            else resolve(value);
+        };
+        const cancel = () => finish(new Error('Stockfish analysis cancelled.'));
+        const onMessage = (event) => {
+            const message = getStockfishMessage(event);
+            const score = message.match(/\bscore\s+(cp|mate)\s+(-?\d+)/);
+            if (score) {
+                const value = Number(score[2]);
+                evaluation = score[1] === 'mate'
+                    ? Math.sign(value || 1) * (10000 - Math.min(Math.abs(value), 99) * 100)
+                    : value;
+            }
+            if (message.includes('bestmove')) finish(null, evaluation);
+        };
+        const timeout = setTimeout(() => finish(new Error('Stockfish analysis timed out.')), 15000);
+        cancelStockfishAnalysisWait = cancel;
+        engine.addEventListener('message', onMessage);
+        engine.postMessage(`position startpos${uciMoves.length ? ` moves ${uciMoves.join(' ')}` : ''}`);
+        engine.postMessage('go depth 8');
     });
 }
 
 function setGameMode(mode) {
+    if (onlineRoom) {
+        showNotification('Сначала выйдите из онлайн-комнаты, чтобы сменить режим игры.', 'warning');
+        return;
+    }
     gameMode = mode;
     const colorLabel = document.getElementById('player-color-label');
     const colorButtons = document.getElementById('player-color-buttons');
@@ -145,7 +397,10 @@ function setGameMode(mode) {
 
 function setDifficulty(level) {
     const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-    if (level === 20 && !userData.is_premium) {
+    const allowedLevels = [1, 5, 10, 20];
+    if (!allowedLevels.includes(Number(level))) return;
+    level = Number(level);
+    if (level === 20 && userData.is_premium !== true) {
         showNotification('🔒 Гроссмейстер доступен только VIP-пользователям', 'warning');
         return;
     }
@@ -169,43 +424,77 @@ function setDifficulty(level) {
         }
     }
     updateOpponentInfo();
+    if (gameActive && gameMode === 'pvc' && currentPlayer !== playerColor &&
+        !isComputerThinking && !computerMoveTimeout) {
+        computerMoveTimeout = setTimeout(makeComputerMove, 100);
+    }
 }
 
-function getStockfishMove() {
-    if (!stockfish) {
-        // Если Stockfish не загрузился, используем простой AI
-        return getSimpleAIMove();
-    }
-
-    return new Promise((resolve) => {
-        const fen = boardToFEN();
-        const depth = Math.min(difficulty, 20);
-        
-        stockfish.postMessage('position fen ' + fen);
-        stockfish.postMessage('go depth ' + depth);
-        
-        let bestMove = null;
-        
-        const onMessage = (event) => {
-            if (event.data && event.data.includes('bestmove')) {
-                const match = event.data.match(/bestmove\s+(\S+)/);
-                if (match) {
-                    bestMove = match[1];
-                    stockfish.removeEventListener('message', onMessage);
-                    resolve(bestMove);
+async function getStockfishMove(level = difficulty, { allowNoviceRandom = false } = {}) {
+    if (allowNoviceRandom && level <= 2 && Math.random() < 0.25) {
+        const legalMoves = [];
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                if (board[row]?.[col]?.color !== currentPlayer) continue;
+                for (const move of getPossibleMoves(row, col)) {
+                    legalMoves.push({ from: { row, col }, to: move });
                 }
             }
-        };
-        
-        stockfish.addEventListener('message', onMessage);
-        
-        // Таймаут на случай проблем
-        setTimeout(() => {
-            if (!bestMove) {
-                stockfish.removeEventListener('message', onMessage);
-                resolve(getSimpleAIMove());
+        }
+        if (legalMoves.length) {
+            const move = legalMoves[Math.floor(Math.random() * legalMoves.length)];
+            return `${String.fromCharCode(97 + move.from.col)}${8 - move.from.row}` +
+                `${String.fromCharCode(97 + move.to.col)}${8 - move.to.row}`;
+        }
+    }
+
+    const engine = await initStockfish();
+    const search = level <= 2
+        ? { skill: Math.floor(Math.random() * 4), depth: 2 }
+        : level <= 5
+            ? { skill: 8, depth: 7 }
+            : level <= 10
+                ? { skill: 16, depth: 13 }
+                : { skill: 20, depth: 19 };
+    return new Promise((resolve, reject) => {
+        const fen = boardToFEN();
+        const finish = (error, move) => {
+            clearTimeout(timeout);
+            engine.removeEventListener('message', onMessage);
+            engine.removeEventListener('error', onError);
+            if (error) {
+                if (stockfish === engine) stopStockfish();
+                reject(error);
+            } else {
+                resolve(move);
             }
-        }, 3000);
+        };
+        const timeout = setTimeout(
+            () => finish(new Error(
+                `Stockfish не рассчитал ход за ${level > 10 ? '60' : '20'} секунд. Нажмите уровень сложности, чтобы повторить.`
+            )),
+            level > 10 ? 60000 : 20000
+        );
+        const onMessage = (event) => {
+            const message = getStockfishMessage(event);
+            if (!message.includes('bestmove')) return;
+            const match = message.match(/\bbestmove\s+([a-h][1-8][a-h][1-8][qrbn]?|0000)\b/);
+            if (!match || match[1] === '0000') {
+                finish(new Error('Stockfish не вернул легальный ход.'));
+                return;
+            }
+            finish(null, match[1]);
+        };
+        const onError = (event) => finish(
+            new Error(`Ошибка worker Stockfish: ${event.message || 'неизвестная ошибка'}`)
+        );
+
+        engine.addEventListener('message', onMessage);
+        engine.addEventListener('error', onError);
+        engine.postMessage('setoption name Skill Level value ' + search.skill);
+        engine.postMessage('ucinewgame');
+        engine.postMessage('position fen ' + fen);
+        engine.postMessage('go depth ' + search.depth);
     });
 }
 
@@ -532,64 +821,91 @@ function getBestMove() {
     return bestMove;
 }
 
-async function showHint() { // Добавили async
+async function showHint() {
     if (!gameActive) return;
-
-    // 1. Проверка на ход компьютера
-    if (gameMode === 'pvc' && currentPlayer !== playerColor) {
-        alert('⏸️ Это ход компьютера');
+    if (hintRequestPending) return;
+    if (analysisRunning) {
+        showNotification('Дождитесь завершения анализа партии.', 'warning');
         return;
     }
-
-    // 2. Логика расхода энергии
-    const userData = JSON.parse(localStorage.getItem('userData'));
-    if (!userData) {
-        alert('Вы не авторизованы для получения подсказок');
-        return;
-    }
+    hintRequestPending = true;
 
     try {
-        // Стучимся на сервер (используем тот же эндпоинт, что и для новой игры)
-        const response = await fetch('/use-energy', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: userData.username })
-        });
-
-        const result = await response.json();
-
-        if (!response.ok) {
-            // Если энергии нет (сервер вернет 400)
-            alert('Недостаточно энергии для подсказки!');
+        // 1. Проверка на ход компьютера
+        if (gameMode === 'pvc' && currentPlayer !== playerColor) {
+            alert('⏸️ Это ход компьютера');
             return;
         }
 
-        // Если списание прошло успешно — обновляем локальные данные и UI
-        userData.energy = result.energy;
-        localStorage.setItem('userData', JSON.stringify(userData));
-        updateUI();
-
-        // 3. Твой код показа подсказки (срабатывает только после оплаты)
-        const hint = getBestMove();
-        if (hint) {
-            const fromSquare = String.fromCharCode(97 + hint.from.col) + (8 - hint.from.row);
-            const toSquare = String.fromCharCode(97 + hint.to.col) + (8 - hint.to.row);
-            const piece = board[hint.from.row][hint.from.col];
-            const pieceName = {
-                'pawn': 'Пешка',
-                'knight': 'Конь',
-                'bishop': 'Слон',
-                'rook': 'Ладья',
-                'queen': 'Ферзь',
-                'king': 'Король'
-            }[piece.type];
-            
-            alert(`💡 Подсказка: ${pieceName} с ${fromSquare} на ${toSquare}`);
+        // 2. Логика расхода энергии
+        const userData = JSON.parse(localStorage.getItem('userData') || 'null');
+        if (!userData) {
+            alert('Вы не авторизованы для получения подсказок');
+            return;
+        }
+        if (userData.is_premium !== true && hintsUsedThisGame) {
+            showNotification('Обычной учётной записи доступна одна подсказка за партию.', 'warning');
+            return;
         }
 
-    } catch (error) {
-        console.error('Hint error:', error);
-        alert('Ошибка подключения к серверу');
+        let stockfishMove;
+        try {
+            stockfishMove = await getStockfishMove(difficulty);
+        } catch (error) {
+            console.error('Stockfish hint error:', error);
+            showNotification(`Подсказка недоступна: ${error.message}`, 'error');
+            return;
+        }
+        const match = stockfishMove && stockfishMove.match(/^([a-h][1-8])([a-h][1-8])/);
+        if (!match) {
+            showNotification('Stockfish пока не готов. Попробуйте ещё раз.', 'error');
+            return;
+        }
+        const from = { row: 8 - Number(match[1][1]), col: match[1].charCodeAt(0) - 97 };
+        const to = { row: 8 - Number(match[2][1]), col: match[2].charCodeAt(0) - 97 };
+        const piece = board[from.row]?.[from.col];
+        if (!piece || !getPossibleMoves(from.row, from.col).some(move => move.row === to.row && move.col === to.col)) {
+            showNotification('Stockfish вернул ход, который недоступен в текущей позиции.', 'error');
+            return;
+        }
+
+        try {
+            // Стучимся на сервер (используем тот же эндпоинт, что и для новой игры)
+            const response = await fetch('/use-energy', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: userData.username })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                // Если энергии нет (сервер вернет 400)
+                alert('Недостаточно энергии для подсказки!');
+                return;
+            }
+
+            // Если списание прошло успешно — обновляем локальные данные и UI
+            userData.energy = result.energy;
+            localStorage.setItem('userData', JSON.stringify(userData));
+            updateUI();
+
+            hintsUsedThisGame = true;
+            const fromSquare = match[1];
+            const toSquare = match[2];
+            const pieceName = {
+                pawn: 'Пешка', knight: 'Конь', bishop: 'Слон',
+                rook: 'Ладья', queen: 'Ферзь', king: 'Король'
+            }[piece.type];
+            showNotification(`💡 Stockfish: ${pieceName} ${fromSquare} → ${toSquare}`, 'success');
+
+        } catch (error) {
+            console.error('Hint error:', error);
+            alert('Ошибка подключения к серверу');
+        }
+    } finally {
+        stopStockfish();
+        hintRequestPending = false;
     }
 }
 function quickSetBoardSize(size, buttonElement) {
@@ -620,30 +936,50 @@ function quickSetBoardSize(size, buttonElement) {
 }
 
 async function makeComputerMove() {
-    if (gameActive && gameMode === 'pvc' && currentPlayer !== playerColor) {
-        isComputerThinking = true;
-        statusElement.textContent = '🤖 Компьютер думает...';
-        
-        try {
-            // Используем простой AI (так как Stockfish сложный в браузере)
-            await new Promise(resolve => setTimeout(resolve, 500 + Math.random() * 1500));
-            
-            const aiMove = getSimpleAIMove();
-            if (aiMove) {
-                makeMove(aiMove.from, aiMove.to);
-            }
-        } catch (err) {
-            console.error('Ошибка при ходе компьютера:', err);
+    computerMoveTimeout = null;
+    if (!gameActive || gameMode !== 'pvc' || currentPlayer === playerColor || isComputerThinking) return;
+
+    const generation = gameGeneration;
+    isComputerThinking = true;
+    statusElement.textContent = '🤖 Stockfish думает...';
+
+    try {
+        const uciMove = await getStockfishMove(difficulty, { allowNoviceRandom: true });
+        if (!gameActive || generation !== gameGeneration) return;
+
+        const match = uciMove.match(/^([a-h][1-8])([a-h][1-8])/);
+        if (!match) throw new Error('Stockfish вернул ход в неизвестном формате.');
+        const from = { row: 8 - Number(match[1][1]), col: match[1].charCodeAt(0) - 97 };
+        const to = { row: 8 - Number(match[2][1]), col: match[2].charCodeAt(0) - 97 };
+        const piece = board[from.row]?.[from.col];
+        const legal = piece?.color === currentPlayer &&
+            getPossibleMoves(from.row, from.col).some(move => move.row === to.row && move.col === to.col);
+        if (!legal) throw new Error(`Stockfish вернул нелегальный ход: ${uciMove}`);
+
+        makeMove(from, to);
+    } catch (error) {
+        if (gameActive && generation === gameGeneration) {
+            console.error('Stockfish bot move failed:', error);
+            statusElement.textContent = 'Ход бота не выполнен. Измените уровень или попробуйте ещё раз.';
+            showNotification(`Бот не смог сделать ход: ${error.message}`, 'error');
         }
-        
+    } finally {
         isComputerThinking = false;
+        if (!gameActive && statusElement) updateStatus();
     }
 }
 
 async function playSound(type) {
     if (!enableSounds) return;
 
-    const audioCtx = await getAudioContext();
+    let audioCtx;
+    try {
+        audioCtx = await getAudioContext();
+    } catch (error) {
+        console.warn('Не удалось запустить звук:', error);
+        return;
+    }
+    if (!audioCtx) return;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
     osc.connect(gain);
@@ -678,32 +1014,39 @@ async function playSound(type) {
     osc.stop(audioCtx.currentTime + duration);
 }
 
-function initBoard() {
-    board = Array(8).fill().map(() => Array(8).fill(null));
-    board[0] = [
+function createInitialBoard() {
+    const initialBoard = Array(8).fill().map(() => Array(8).fill(null));
+    initialBoard[0] = [
         { type: 'rook', color: 'black' }, { type: 'knight', color: 'black' },
         { type: 'bishop', color: 'black' }, { type: 'queen', color: 'black' },
         { type: 'king', color: 'black' }, { type: 'bishop', color: 'black' },
         { type: 'knight', color: 'black' }, { type: 'rook', color: 'black' }
     ];
     for (let i = 0; i < 8; i++) {
-        board[1][i] = { type: 'pawn', color: 'black' };
-        board[6][i] = { type: 'pawn', color: 'white' };
+        initialBoard[1][i] = { type: 'pawn', color: 'black' };
+        initialBoard[6][i] = { type: 'pawn', color: 'white' };
     }
-    board[7] = [
+    initialBoard[7] = [
         { type: 'rook', color: 'white' }, { type: 'knight', color: 'white' },
         { type: 'bishop', color: 'white' }, { type: 'queen', color: 'white' },
         { type: 'king', color: 'white' }, { type: 'bishop', color: 'white' },
         { type: 'knight', color: 'white' }, { type: 'rook', color: 'white' }
     ];
-    renderBoard();
-    updateTimer();
-    updateMaterialBalance();
-    updateMovesPanel();
+    return initialBoard;
+}
+
+function initBoard() {
+    board = createInitialBoard();
+    historyReplay = null;
 }
 
 function renderBoard() {
+    if (!boardElement) return;
     boardElement.innerHTML = '';
+    if (!Array.isArray(board) || board.length !== 8 || board.some(row => !Array.isArray(row) || row.length !== 8)) {
+        updateMaterialBalance();
+        return;
+    }
     
     // Определяем порядок отрисовки в зависимости от ориентации доски
     const rowStart = boardFlipped ? 7 : 0;
@@ -730,13 +1073,10 @@ function renderBoard() {
             // Сохраняем оригинальные координаты для обработки кликов
             square.dataset.row = row;
             square.dataset.col = col;
-            square.addEventListener('click', () => handleSquareClick(row, col));
-            
-            // Подсвечивание атакованных клеток
-            if (enableAnimations && isSquareAttacked(row, col, 'black')) {
+            if (blindBoardActive && isSquareAttacked(row, col, 'black')) {
                 square.classList.add('attacked-by-black');
             }
-            if (enableAnimations && isSquareAttacked(row, col, 'white')) {
+            if (blindBoardActive && isSquareAttacked(row, col, 'white')) {
                 square.classList.add('attacked-by-white');
             }
             
@@ -787,6 +1127,7 @@ function updateBoardCoordinates() {
 
 function updateMaterialBalance() {
     if (!enableMaterial) return;
+    if (!Array.isArray(board) || board.length !== 8 || board.some(row => !Array.isArray(row))) return;
     let whiteMat = 0, blackMat = 0;
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
@@ -825,13 +1166,15 @@ function updateMovesPanel() {
 
 function handleSquareClick(row, col) {
     if (!gameActive || isComputerThinking) return;
+    if (onlineRoom && (currentPlayer !== playerColor || onlineMovePending)) return;
     
     // В режиме с компьютером - не позволять ходить когда не твой ход
     if (gameMode === 'pvc' && currentPlayer !== playerColor) return;
     
     if (selectedSquare) {
         if (possibleMoves.some(move => move.row === row && move.col === col)) {
-            makeMove(selectedSquare, { row, col });
+            if (onlineRoom) submitOnlineMove(selectedSquare, { row, col });
+            else makeMove(selectedSquare, { row, col });
         } else {
             selectSquare(row, col);
         }
@@ -841,6 +1184,7 @@ function handleSquareClick(row, col) {
 }
 
 function selectSquare(row, col) {
+    if (!Array.isArray(board) || !board[row]) return;
     // В режиме с компьютером - не позволять выбирать фигуры не своего цвета
     if (gameMode === 'pvc' && currentPlayer !== playerColor) return;
     
@@ -857,6 +1201,7 @@ function selectSquare(row, col) {
 }
 
 function getPossibleMoves(row, col) {
+    if (!Array.isArray(board) || !board[row] || !board[row][col]) return [];
     const piece = board[row][col];
     let moves = [];
     switch (piece.type) {
@@ -1056,8 +1401,23 @@ function isPathClearWithBoard(fromRow, fromCol, toRow, toCol, tempBoard) {
 }
 
 function makeMove(from, to) {
+    if (!Array.isArray(board) || !board[from.row] || !board[to.row]) return;
     const piece = board[from.row][from.col];
-    const captured = board[to.row][to.col];
+    if (!piece) return;
+    const isEnPassantCapture = piece.type === 'pawn' && enPassantTarget &&
+        to.row === enPassantTarget.row && to.col === enPassantTarget.col;
+    const captured = board[to.row][to.col] || (isEnPassantCapture ? board[from.row][to.col] : null);
+    moveHistory.push({
+        from, to, piece, captured,
+        previousBoard: board.map(row => row.map(cell => cell ? { ...cell } : null)),
+        previousPlayer: currentPlayer,
+        previousCastlingRights: JSON.parse(JSON.stringify(castlingRights)),
+        previousEnPassantTarget: enPassantTarget ? { ...enPassantTarget } : null,
+        previousGameActive: gameActive,
+        previousWhiteTime: whiteTime,
+        previousBlackTime: blackTime,
+        side: currentPlayer
+    });
     
     if (piece.type === 'king' && Math.abs(to.col - from.col) === 2) {
         if (to.col === 6) {
@@ -1096,7 +1456,6 @@ function makeMove(from, to) {
         if (from.col === 7) castlingRights[piece.color].kingSide = false;
     }
     
-    moveHistory.push({ from, to, piece, captured });
     gameMoves.push(`${piece.type.charAt(0)}${String.fromCharCode(97 + from.col)}${8 - from.row}-${String.fromCharCode(97 + to.col)}${8 - to.row}`);
     
     currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
@@ -1110,12 +1469,13 @@ function makeMove(from, to) {
     renderBoard();
     
     // Если играем против компьютера, делать его ход
-    if (gameMode === 'pvc' && gameActive) {
-        setTimeout(makeComputerMove, 500);
+    if (gameMode === 'pvc' && gameActive && currentPlayer !== playerColor && !computerMoveTimeout) {
+        computerMoveTimeout = setTimeout(makeComputerMove, 500);
     }
 }
 
 function updateStatus() {
+    if (!Array.isArray(board) || board.length !== 8 || board.some(row => !Array.isArray(row))) return;
     const getGameStage = () => {
         const moveCount = gameMoves.length;
         if (moveCount < 20) return '📖 Дебют';
@@ -1129,8 +1489,7 @@ function updateStatus() {
         statusElement.textContent = `🏆 Мат! ${currentPlayer === 'white' ? 'Чёрные' : 'Белые'} выигрывают!`;
         gameActive = false;
         clearInterval(timerInterval);
-        playSound('check');
-        saveGame(currentPlayer === 'white' ? 'loss' : 'win');
+        saveGame(currentPlayer === playerColor ? 'loss' : 'win');
     } else if (isStalemate()) {
         statusElement.textContent = '🤝 Пат! Ничья!';
         gameActive = false;
@@ -1138,7 +1497,6 @@ function updateStatus() {
         saveGame('draw');
     } else if (isInCheck(currentPlayer)) {
         statusElement.textContent = `⚠️ Шах! ${stageEmoji} Ход ${currentPlayer === 'white' ? '⚪' : '⚫'}`;
-        playSound('check');
     } else {
         statusElement.textContent = `${stageEmoji} Ход ${currentPlayer === 'white' ? '⚪' : '⚫'} (${gameMoves.length})`;
     }
@@ -1179,29 +1537,46 @@ function hasLegalMoves() {
 }
 
 function undoMove() {
-    if (moveHistory.length > 0) {
-        const last = moveHistory.pop();
-        gameMoves.pop();
-        board[last.from.row][last.from.col] = last.piece;
-        board[last.to.row][last.to.col] = last.captured;
-        currentPlayer = currentPlayer === 'white' ? 'black' : 'white';
-        updateStatus();
-        updateMaterialBalance();
-        updateMovesPanel();
-        renderBoard();
+    if (onlineRoom) {
+        showNotification('Отмена хода недоступна в онлайн-комнате.', 'warning');
+        return;
     }
+    const last = moveHistory[moveHistory.length - 1];
+    const isOwnMove = gameMode === 'pvp' || last?.side === playerColor;
+    if (!last || (!gameActive && gameSaved) || !isOwnMove) {
+        showNotification('Можно отменить только свой последний ход до ответа соперника.', 'warning');
+        return;
+    }
+    clearTimeout(computerMoveTimeout);
+    gameGeneration++;
+    isComputerThinking = false;
+    moveHistory.pop();
+    gameMoves.pop();
+    board = last.previousBoard;
+    currentPlayer = last.previousPlayer;
+    castlingRights = last.previousCastlingRights;
+    enPassantTarget = last.previousEnPassantTarget;
+    gameActive = last.previousGameActive;
+    whiteTime = last.previousWhiteTime;
+    blackTime = last.previousBlackTime;
+    selectedSquare = null;
+    possibleMoves = [];
+    if (gameActive) startTimer();
+    updateStatus();
+    updateTimer();
+    updateMovesPanel();
+    renderBoard();
 }
 
 function resignGame() {
     if (!gameActive) return;
-    const loser = currentPlayer;
+    const loser = onlineRoom ? playerColor : currentPlayer;
     const winner = loser === 'white' ? 'black' : 'white';
     statusElement.textContent = `🏳️ ${loser === 'white' ? 'Белые' : 'Чёрные'} сдались. ${winner === 'white' ? 'Белые ⚪' : 'Чёрные ⚫'} выигрывают!`;
     gameActive = false;
     clearInterval(timerInterval);
     const resultType = loser === playerColor ? 'loss' : (winner === playerColor ? 'win' : 'draw');
     saveGame(resultType);
-    saveGameResult(resultType === 'loss' ? 'Поражение' : resultType === 'win' ? 'Победа' : 'Ничья');
 }
 
 function agreeToDrawGame() {
@@ -1214,6 +1589,10 @@ function agreeToDrawGame() {
 
 function stopGame() {
     if (!gameActive) return;
+    if (onlineRoom) {
+        showNotification('В онлайн-партии используйте «Сдаться» или «Выйти из комнаты».', 'warning');
+        return;
+    }
     statusElement.textContent = `🛑 Игра остановлена.`;
     gameActive = false;
     clearInterval(timerInterval);
@@ -1227,6 +1606,10 @@ function setTime(seconds) {
 }
 
 function setPlayerColor(color) {
+    if (onlineRoom) {
+        showNotification('Цвет фигур задаётся комнатой и не может быть изменён.', 'warning');
+        return;
+    }
     playerColor = color;
     currentPlayer = 'white'; // Белые всегда начинают первыми
     
@@ -1244,7 +1627,8 @@ function setPlayerColor(color) {
 
 function startTimer() {
     if (timerInterval) clearInterval(timerInterval);
-    if (!gameActive) return;
+    timerInterval = null;
+    if (!gameActive || document.hidden) return;
     timerInterval = setInterval(() => {
         if (currentPlayer === 'white') {
             whiteTime--;
@@ -1275,76 +1659,97 @@ function updateTimer() {
 }
 
 async function resetGame() {
-    // Расход энергии при игре против бота
-    if (gameMode === 'pvc') {
-        const userData = JSON.parse(localStorage.getItem('userData'));
-        if (!userData) {
-            showNotification('Вы не авторизованы для игры против бота', 'error');
-            return;
-        }
-        
-        try {
-            const response = await fetch('/use-energy', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ username: userData.username })
-            });
-            
-            const result = await response.json();
-            
-            if (!response.ok) {
-                if (response.status === 400 && result.error === 'Not enough energy.') {
-                    showNotification('Недостаточно энергии! Энергия восстанавливается каждые 30 минут.', 'error');
-                    return;
-                } else {
-                    showNotification(result.error || 'Ошибка расхода энергии', 'error');
+    if (resetGamePending) return;
+    cancelGameAnalysis();
+    if (onlineRoom) leaveOnlineRoom(false);
+    resetGamePending = true;
+    clearTimeout(computerMoveTimeout);
+    computerMoveTimeout = null;
+    clearInterval(timerInterval);
+    timerInterval = null;
+    try {
+        if (gameMode === 'pvc') {
+            const userData = JSON.parse(localStorage.getItem('userData'));
+            if (!userData) {
+                showNotification('Вы не авторизованы для игры против бота', 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch('/use-energy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ username: userData.username })
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    if (response.status === 400 && result.error === 'Not enough energy.') {
+                        showNotification('Недостаточно энергии! Энергия восстанавливается каждые 30 минут.', 'error');
+                    } else {
+                        showNotification(result.error || 'Ошибка расхода энергии', 'error');
+                    }
                     return;
                 }
+
+                userData.energy = result.energy;
+                localStorage.setItem('userData', JSON.stringify(userData));
+                updateUI();
+            } catch (error) {
+                console.error('Use energy error:', error);
+                showNotification('Ошибка подключения к серверу', 'error');
+                return;
             }
-            
-            // Обновить энергию в UI
-            userData.energy = result.energy;
-            localStorage.setItem('userData', JSON.stringify(userData));
-            updateUI();
-            
-        } catch (error) {
-            console.error('Use energy error:', error);
-            showNotification('Ошибка подключения к серверу', 'error');
-            return;
         }
-    }
-    
-    clearInterval(timerInterval);
-    initBoard();
-    currentPlayer = 'white'; // Белые ВСЕГДА начинают первыми
-    selectedSquare = null;
-    possibleMoves = [];
-    moveHistory = [];
-    enPassantTarget = null;
-    castlingRights = { white: { kingSide: true, queenSide: true }, black: { kingSide: true, queenSide: true } };
-    whiteTime = selectedTime;
-    blackTime = selectedTime;
-    gameMoves = [];
-    gameActive = true;
-    isComputerThinking = false;
-    
-    // Установить переворот доски если играем черными
-    boardFlipped = (gameMode === 'pvc' && playerColor === 'black');
-    
-    updateStatus();
-    updateTimer();
-    renderBoard();
-    startTimer();
-    
-    // Если компьютер играет за черных, он ходит после белых
-    if (gameMode === 'pvc' && playerColor === 'black') {
-        setTimeout(makeComputerMove, 1000);
+
+        initBoard();
+        currentPlayer = 'white';
+        selectedSquare = null;
+        possibleMoves = [];
+        moveHistory = [];
+        enPassantTarget = null;
+        castlingRights = { white: { kingSide: true, queenSide: true }, black: { kingSide: true, queenSide: true } };
+        whiteTime = selectedTime;
+        blackTime = selectedTime;
+        gameMoves = [];
+        gameSaved = false;
+        updateAnalysisControls();
+        hintsUsedThisGame = false;
+        activeGameMode = gameMode;
+        activeGameDifficulty = difficulty;
+        gameGeneration++;
+        gameActive = true;
+        updateAnalysisControls();
+        isComputerThinking = false;
+        boardFlipped = (gameMode === 'pvc' && playerColor === 'black');
+
+        updateStatus();
+        updateTimer();
+        updateMovesPanel();
+        renderBoard();
+        startTimer();
+
+        if (gameMode === 'pvc' && playerColor === 'black') {
+            computerMoveTimeout = setTimeout(makeComputerMove, 1000);
+        }
+    } finally {
+        resetGamePending = false;
+        if (gameActive && !timerInterval) {
+            startTimer();
+            if (gameMode === 'pvc' && currentPlayer !== playerColor && !computerMoveTimeout) {
+                computerMoveTimeout = setTimeout(makeComputerMove, 500);
+            }
+        }
     }
 }
 
 function saveGame(result) {
+    if (gameSaved || !Array.isArray(board) || board.length !== 8) return;
+    gameSaved = true;
+    updateAnalysisControls();
     const game = {
         date: new Date().toISOString(),
         moves: gameMoves.slice(),
@@ -1354,11 +1759,6 @@ function saveGame(result) {
         duration: selectedTime - (currentPlayer === 'white' ? whiteTime : blackTime)
     };
     
-    // Обновить Elo если это игра против компьютера
-    if (gameMode === 'pvc') {
-        updateEloAfterGame(result);
-    }
-    
     const history = JSON.parse(localStorage.getItem('chessHistory') || '[]');
     history.unshift(game);
     if (history.length > 100) history.pop();
@@ -1366,10 +1766,15 @@ function saveGame(result) {
     
     // Сохранить Elo историю
     localStorage.setItem('eloHistory', JSON.stringify(eloHistory));
-    localStorage.setItem('playerElo', playerElo);
     
     updateStatistics();
     updateLandingStats(); // Обновить статистику на landing странице после игры
+    if (onlineRoom) {
+        if (onlineMovePending) onlineFinishPending = result;
+        else finishOnlineRoom(result);
+    } else {
+        saveGameResult(result);
+    }
 }
 
 async function saveGameResult(resultStatus) {
@@ -1380,7 +1785,9 @@ async function saveGameResult(resultStatus) {
         userId: userData.id,
         result: resultStatus,
         fen: boardToFEN(),
-        moves: gameMoves.join(', ')
+        moves: gameMoves.join(', '),
+        gameMode: activeGameMode,
+        difficulty: activeGameDifficulty
     };
 
     try {
@@ -1389,112 +1796,46 @@ async function saveGameResult(resultStatus) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(gameData)
         });
-        if (response.ok) {
-            console.log('Партия успешно записана в БД');
+        const result = await response.json();
+        if (response.ok && result.success) {
+            const currentUser = JSON.parse(localStorage.getItem('userData') || 'null');
+            if (currentUser && String(currentUser.id) === String(userData.id)) {
+                currentUser.elo = Number(result.elo);
+                currentUser.league = result.league;
+                eloGainedInLastGame = Number(result.eloChange);
+                eloHistory.push({
+                    date: new Date().toLocaleString('ru-RU'),
+                    result: resultStatus,
+                    change: eloGainedInLastGame,
+                    newElo: Number(result.elo)
+                });
+                if (eloHistory.length > 20) eloHistory.shift();
+                localStorage.setItem('userData', JSON.stringify(currentUser));
+                localStorage.setItem('eloHistory', JSON.stringify(eloHistory));
+                updateUI();
+                await refreshUserProfile(currentUser.id);
+                await loadLeaderboard();
+            } else {
+                await loadLeaderboard();
+            }
+            if (document.getElementById('history')?.classList.contains('active')) loadHistory();
+        } else {
+            console.error('Не удалось сохранить партию:', response.status, result.error);
+            showNotification('Не удалось сохранить партию и обновить рейтинг.', 'error');
         }
     } catch (error) {
         console.error('Связь с сервером потеряна:', error);
+        showNotification('Не удалось сохранить партию и обновить Elo. Проверьте соединение и повторите позже.', 'error');
     }
-}
-
-// Функция для обновления Elo рейтинга
-function updateEloAfterGame(result) {
-    // Получаем Elo противника на основе сложности
-    const opponentEloMap = {
-        1: 800,   // Новичок
-        2: 900,
-        3: 1000,
-        4: 1100,
-        5: 1300,  // Средний
-        6: 1400,
-        7: 1500,
-        8: 1600,
-        9: 1700,
-        10: 1900, // Мастер
-        11: 2000,
-        12: 2100,
-        13: 2200,
-        14: 2300,
-        15: 2400,
-        16: 2500,
-        17: 2600,
-        18: 2700,
-        19: 2800,
-        20: 2900  // Гроссмейстер
-    };
-    
-    const opponentElo = opponentEloMap[difficulty] || 1500;
-    const K = 32; // Коэффициент для стандартной игры
-    
-    // Ожидаемый результат
-    const expectedScore = 1 / (1 + Math.pow(10, (opponentElo - playerElo) / 400));
-    
-    let actualScore = 0;
-    if (result === 'win') actualScore = 1;
-    else if (result === 'draw') actualScore = 0.5;
-    else actualScore = 0;
-    
-    // Новый рейтинг
-    const eloChange = Math.round(K * (actualScore - expectedScore));
-    playerElo = Math.max(100, playerElo + eloChange);
-    eloGainedInLastGame = eloChange;
-    
-    // Сохранить историю
-    const timestamp = new Date().toLocaleString('ru-RU');
-    const difficultyText = ['🟢 Новичок', '🟡 Средний', '🔴 Мастер', '🔴 Гроссмейстер'][
-        difficulty <= 2 ? 0 : difficulty <= 5 ? 1 : difficulty <= 10 ? 2 : 3
-    ];
-    
-    eloHistory.push({
-        date: timestamp,
-        difficulty: difficultyText,
-        result: result,
-        change: eloChange,
-        newElo: playerElo
-    });
-    
-    // Оставить только последние 20 игр
-    if (eloHistory.length > 20) eloHistory.shift();
-    
-    // Обновить отображение Elo
-    updateEloDisplay();
 }
 
 function updateEloDisplay() {
     const eloRating = document.getElementById('elo-rating');
     const eloCategory = document.getElementById('elo-category');
-    const eloSlider = document.getElementById('elo-slider');
-    
-    if (eloRating) {
-        eloRating.textContent = playerElo;
-        eloRating.style.animation = 'none';
-        setTimeout(() => {
-            eloRating.style.animation = 'pulse 0.6s ease-in-out';
-        }, 10);
-    }
-    
-    // Обновить категорию рейтинга
-    if (eloCategory) {
-        let category = 'Новичок';
-        let emoji = '🟢';
-        
-        if (playerElo >= 1600 && playerElo < 1700) category = 'Средний уровень';
-        else if (playerElo >= 1800 && playerElo < 1900) category = 'Хороший уровень';
-        else if (playerElo >= 2000 && playerElo < 2100) category = 'Мастер';
-        else if (playerElo >= 2200 && playerElo < 2300) category = 'Мастер-кандидат', emoji = '🔴';
-        else if (playerElo >= 2400) category = 'Гроссмейстер', emoji = '🔴';
-        else if (playerElo < 1600) category = 'Новичок', emoji = '🟢';
-        
-        if (playerElo >= 1500 && playerElo < 1600) emoji = '🟡';
-        else if (playerElo >= 1700 && playerElo < 1800) emoji = '🟡';
-        else if (playerElo >= 1900 && playerElo < 2000) emoji = '🟡';
-        
-        eloCategory.textContent = `${emoji} ${category} (${playerElo} Elo)`;
-    }
-    
-    if (eloSlider) eloSlider.value = playerElo;
-    
-    // Обновить историю
+    const user = JSON.parse(localStorage.getItem('userData') || 'null');
+    const elo = Number(user?.elo);
+    if (eloRating) eloRating.textContent = Number.isFinite(elo) ? String(elo) : '—';
+    if (eloCategory) eloCategory.textContent = user?.league || 'Войдите, чтобы увидеть рейтинг';
     updateEloHistory();
 }
 
@@ -1525,49 +1866,149 @@ function updateEloHistory() {
     }).join('');
 }
 
-function getEloCategory(elo) {
-    if (elo < 1200) return { name: 'Новичок', emoji: '🟢' };
-    if (elo < 1400) return { name: 'Средний', emoji: '🟡' };
-    if (elo < 1700) return { name: 'Хороший', emoji: '🟡' };
-    if (elo < 2000) return { name: 'Мастер', emoji: '🔴' };
-    if (elo < 2300) return { name: 'Мастер-кандидат', emoji: '🔴' };
-    return { name: 'Гроссмейстер', emoji: '🔴' };
-}
-
-function loadHistory() {
-    const history = JSON.parse(localStorage.getItem('chessHistory') || '[]');
+async function loadHistory() {
     const historyDiv = document.getElementById('game-history');
     const noHistoryDiv = document.getElementById('no-history');
-    
-    if (history.length === 0) {
-        historyDiv.innerHTML = '';
+    const viewer = document.getElementById('history-viewer');
+    if (!historyDiv || !noHistoryDiv) return;
+    const user = JSON.parse(localStorage.getItem('userData') || 'null');
+    historyDiv.replaceChildren();
+    if (viewer) viewer.style.display = 'none';
+    if (!user?.id) {
         noHistoryDiv.style.display = 'block';
+        noHistoryDiv.textContent = 'Войдите в аккаунт, чтобы загрузить историю партий с сервера.';
         return;
     }
-    
-    noHistoryDiv.style.display = 'none';
-    historyDiv.innerHTML = '';
-    
-    history.forEach((game, index) => {
+
+    noHistoryDiv.textContent = '📭 Сохранённых партий пока нет.';
+    noHistoryDiv.style.display = 'block';
+    try {
+        const response = await fetch(`/api/history?userId=${encodeURIComponent(user.id)}`);
+        if (!response.ok) throw new Error(`History request failed: ${response.status}`);
+        const { games } = await response.json();
+        if (!Array.isArray(games) || games.length === 0) return;
+
+        noHistoryDiv.style.display = 'block';
+        noHistoryDiv.style.display = 'none';
+        games.forEach((game, index) => {
         const gameDiv = document.createElement('div');
         gameDiv.className = 'game-record';
-        const resultClass = game.result === 'win' ? 'win' : (game.result === 'loss' ? 'loss' : 'draw');
-        const resultText = game.result === 'win' ? '✅ Победа' : (game.result === 'loss' ? '❌ Поражение' : '🤝 Ничья');
-        const movesList = game.moves.length > 0 ? game.moves.slice(0, 6).map(m => `<span class="move">${m}</span>`).join('') + (game.moves.length > 6 ? '...' : '') : 'Новая партия';
-        
-        gameDiv.innerHTML = `
-            <div class="game-record-header">
-                <span class="game-record-title">Партия ${index + 1}</span>
-                <span class="game-record-date">${new Date(game.date).toLocaleString('ru-RU')}</span>
-            </div>
-            <div style="margin: 10px 0;">
-                <span class="game-record-result ${resultClass}">${resultText}</span>
-            </div>
-            <div class="moves-list">${movesList}</div>
-            <button onclick="loadGamePosition('${game.fen}')" style="margin-top: 8px; width: 100%;">Загрузить позицию</button>
-        `;
+        const heading = document.createElement('div');
+        heading.className = 'game-record-header';
+        const title = document.createElement('strong');
+        title.className = 'game-record-title';
+        title.textContent = `Партия ${games.length - index}`;
+        const date = document.createElement('span');
+        date.className = 'game-record-date';
+        date.textContent = game.createdAt ? new Date(game.createdAt).toLocaleString('ru-RU') : '';
+        heading.append(title, date);
+        const result = document.createElement('p');
+        const normalizedResult = String(game.result || '').toLowerCase();
+        const resultKey = normalizedResult === 'win' || normalizedResult.includes('побед')
+            ? 'win'
+            : normalizedResult === 'loss' || normalizedResult.includes('поражен')
+                ? 'loss'
+                : 'draw';
+        result.className = `game-record-result ${resultKey}`;
+        result.textContent = resultKey === 'win' ? '✅ Победа' : resultKey === 'loss' ? '❌ Поражение' : '🤝 Ничья';
+        const moves = document.createElement('p');
+        moves.className = 'moves-list';
+        const parsedMoves = parseHistoryMoves(game.moves);
+        moves.textContent = parsedMoves.length ? `Ходов: ${parsedMoves.length}` : 'Запись ходов отсутствует';
+        const openButton = document.createElement('button');
+        openButton.type = 'button';
+        openButton.textContent = 'Просмотреть партию';
+        openButton.addEventListener('click', () => openHistoryGame(game.id));
+        gameDiv.append(heading, result, moves, openButton);
         historyDiv.appendChild(gameDiv);
-    });
+        });
+    } catch (error) {
+        console.error('Ошибка загрузки истории:', error);
+        noHistoryDiv.textContent = 'Не удалось загрузить историю партий. Попробуйте обновить вкладку.';
+        noHistoryDiv.style.display = 'block';
+    }
+}
+
+function parseHistoryMoves(moves) {
+    const encoded = Array.isArray(moves) ? moves.join(' ') : String(moves || '');
+    return encoded.match(/[a-h][1-8]-[a-h][1-8]/g) || [];
+}
+
+function createReplayBoard(moves, index) {
+    const replayBoard = createInitialBoard();
+    for (let moveIndex = 0; moveIndex < index; moveIndex++) {
+        const match = moves[moveIndex].match(/^([a-h][1-8])-([a-h][1-8])$/);
+        if (!match) continue;
+        const from = { row: 8 - Number(match[1][1]), col: match[1].charCodeAt(0) - 97 };
+        const to = { row: 8 - Number(match[2][1]), col: match[2].charCodeAt(0) - 97 };
+        const piece = replayBoard[from.row][from.col];
+        if (!piece) continue;
+        if (piece.type === 'king' && Math.abs(to.col - from.col) === 2) {
+            const rookFrom = to.col > from.col ? 7 : 0;
+            const rookTo = to.col > from.col ? 5 : 3;
+            replayBoard[to.row][rookTo] = replayBoard[to.row][rookFrom];
+            replayBoard[to.row][rookFrom] = null;
+        }
+        if (piece.type === 'pawn' && from.col !== to.col && !replayBoard[to.row][to.col]) {
+            replayBoard[from.row][to.col] = null;
+        }
+        replayBoard[to.row][to.col] = { ...piece, type: piece.type === 'pawn' && (to.row === 0 || to.row === 7) ? 'queen' : piece.type };
+        replayBoard[from.row][from.col] = null;
+    }
+    return replayBoard;
+}
+
+async function openHistoryGame(gameId) {
+    const user = JSON.parse(localStorage.getItem('userData') || 'null');
+    if (!user?.id) return;
+    try {
+        const response = await fetch(`/api/history/${encodeURIComponent(gameId)}?userId=${encodeURIComponent(user.id)}`);
+        if (!response.ok) throw new Error(`Game request failed: ${response.status}`);
+        const { game } = await response.json();
+        historyReplay = { game, moves: parseHistoryMoves(game.moves), index: 0 };
+        const viewer = document.getElementById('history-viewer');
+        const title = document.getElementById('history-viewer-title');
+        if (title) title.textContent = `Партия от ${game.createdAt ? new Date(game.createdAt).toLocaleString('ru-RU') : '—'}`;
+        if (viewer) viewer.style.display = 'block';
+        renderHistoryPosition();
+        viewer?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch (error) {
+        console.error('Ошибка открытия партии:', error);
+        showNotification('Не удалось открыть партию.', 'error');
+    }
+}
+
+function stepHistory(direction) {
+    if (!historyReplay) return;
+    historyReplay.index = Math.max(0, Math.min(historyReplay.moves.length, historyReplay.index + direction));
+    renderHistoryPosition();
+}
+
+function renderHistoryPosition() {
+    if (!historyReplay) return;
+    const replayBoard = createReplayBoard(historyReplay.moves, historyReplay.index);
+
+    const boardView = document.getElementById('history-viewer-board');
+    if (boardView) {
+        boardView.replaceChildren();
+        for (let row = 0; row < 8; row++) {
+            for (let col = 0; col < 8; col++) {
+                const square = document.createElement('div');
+                square.className = `history-viewer-square ${(row + col) % 2 === 0 ? 'light' : 'dark'}`;
+                const piece = replayBoard[row][col];
+                if (piece) square.textContent = pieces[piece.color][piece.type];
+                boardView.appendChild(square);
+            }
+        }
+    }
+    const stepLabel = document.getElementById('history-viewer-step');
+    if (stepLabel) stepLabel.textContent = `${historyReplay.index} / ${historyReplay.moves.length} ходов`;
+}
+
+function closeHistoryViewer() {
+    historyReplay = null;
+    const viewer = document.getElementById('history-viewer');
+    if (viewer) viewer.style.display = 'none';
 }
 
 function filterHistory() {
@@ -1607,7 +2048,7 @@ function updateStatistics() {
     const premiumStats = document.getElementById('premium-stats');
     const userData = JSON.parse(localStorage.getItem('userData') || '{}');
     if (premiumStats) {
-        if (userData.is_premium) {
+        if (userData.is_premium === true) {
             premiumStats.style.display = 'grid';
             const winRate = history.length ? Math.round((wins / history.length) * 100) : 0;
             const bestStreak = history.reduce((acc, game) => {
@@ -1637,6 +2078,8 @@ function updateStatistics() {
 }
 
 function boardToFEN() {
+    if (!Array.isArray(board) || board.length !== 8 || board.some(row => !Array.isArray(row))) return '';
+    const fenCharByType = { pawn: 'p', knight: 'n', bishop: 'b', rook: 'r', queen: 'q', king: 'k' };
     let fen = '';
     for (let row = 0; row < 8; row++) {
         let emptyCount = 0;
@@ -1645,7 +2088,8 @@ function boardToFEN() {
                 if (emptyCount) fen += emptyCount;
                 emptyCount = 0;
                 const piece = board[row][col];
-                const char = piece.type.charAt(0);
+                const char = fenCharByType[piece.type];
+                if (!char) return '';
                 fen += piece.color === 'white' ? char.toUpperCase() : char;
             } else {
                 emptyCount++;
@@ -1654,8 +2098,17 @@ function boardToFEN() {
         if (emptyCount) fen += emptyCount;
         if (row < 7) fen += '/';
     }
-    fen += ' ' + currentPlayer.charAt(0);
-    return fen;
+    const activeColor = currentPlayer === 'white' ? 'w' : 'b';
+    const castling = [
+        castlingRights.white.kingSide ? 'K' : '',
+        castlingRights.white.queenSide ? 'Q' : '',
+        castlingRights.black.kingSide ? 'k' : '',
+        castlingRights.black.queenSide ? 'q' : ''
+    ].join('') || '-';
+    const enPassant = enPassantTarget
+        ? `${String.fromCharCode(97 + enPassantTarget.col)}${8 - enPassantTarget.row}`
+        : '-';
+    return `${fen} ${activeColor} ${castling} ${enPassant} 0 ${Math.floor(gameMoves.length / 2) + 1}`;
 }
 
 function movesToPGN() {
@@ -1782,12 +2235,6 @@ function changeBoardSize() {
     else sizeButtons[1].classList.add('active');
 }
 
-function updateElo() {
-    playerElo = parseInt(document.getElementById('elo-slider').value);
-    document.getElementById('elo-rating').textContent = playerElo;
-    localStorage.setItem('playerElo', playerElo);
-}
-
 function exportSettings() {
     const settings = {
         enableAnimations,
@@ -1798,7 +2245,6 @@ function exportSettings() {
         currentBoardSize,
         currentPieceSet,
         blindBoardActive,
-        playerElo,
         selectedTime,
         themeToggle: themeToggle.checked
     };
@@ -1812,7 +2258,7 @@ function importSettings() {
     reader.onload = (e) => {
         try {
             const settings = JSON.parse(e.target.result);
-            Object.assign({ enableAnimations, enableSounds, enableCoordinates, enableMaterial, currentBoardStyle, currentBoardSize, currentPieceSet, blindBoardActive, playerElo }, settings);
+            Object.assign({ enableAnimations, enableSounds, enableCoordinates, enableMaterial, currentBoardStyle, currentBoardSize, currentPieceSet, blindBoardActive }, settings);
             localStorage.setItem('enableAnimations', enableAnimations);
             localStorage.setItem('enableSounds', enableSounds);
             localStorage.setItem('enableCoordinates', enableCoordinates);
@@ -1821,7 +2267,6 @@ function importSettings() {
             localStorage.setItem('boardSize', currentBoardSize);
             localStorage.setItem('pieceSet', currentPieceSet);
             localStorage.setItem('blindBoardActive', blindBoardActive);
-            localStorage.setItem('playerElo', playerElo);
             alert('Настройки загружены!');
             location.reload();
         } catch (err) {
@@ -1856,6 +2301,10 @@ function showTab(tabId) {
 
     if (tabId === 'chat') {
         loadMessages();
+        scheduleChatRefresh();
+    } else {
+        clearTimeout(chatRefreshTimeout);
+        chatRefreshTimeout = null;
     }
     
     localStorage.setItem('currentTab', tabId);
@@ -1882,13 +2331,716 @@ function showTab(tabId) {
         if (typeof updateEloDisplay === 'function') updateEloDisplay();
     } else if (tabId === 'analyze') {
         runPositionAnalysis(); // Вынес тяжелый код в отдельную функцию для чистоты
+    } else if (tabId === 'puzzles') {
+        loadDailyPuzzleIfNeeded();
+    } else if (tabId === 'online') {
+        if (onlineRoom) updateOnlineRoomStatus(onlineRoom.lastState || {
+            started: onlineRoom.gameStarted,
+            finished: false,
+            turn: currentPlayer,
+            players: {}
+        });
     }
+}
+
+function getCompletedGameForAnalysis() {
+    if (gameActive) return null;
+    if (gameSaved) return { moves: gameMoves.slice() };
+    try {
+        const history = JSON.parse(localStorage.getItem('chessHistory') || '[]');
+        return Array.isArray(history) ? history.find(game => Array.isArray(game.moves) || typeof game.moves === 'string') || null : null;
+    } catch (error) {
+        console.error('Не удалось прочитать локальную историю партий:', error);
+        return null;
+    }
+}
+
+function updateAnalysisControls() {
+    const button = document.getElementById('analyze-game-button');
+    if (!button) return;
+    const game = getCompletedGameForAnalysis();
+    button.disabled = analysisRunning || !game || parseHistoryMoves(game.moves).length === 0;
+    button.textContent = analysisRunning ? '⏳ Анализ выполняется...' : '🔍 Анализировать завершённую партию';
+}
+
+function cancelGameAnalysis() {
+    if (!analysisRunning) return;
+    analysisRunToken++;
+    if (cancelStockfishAnalysisWait) cancelStockfishAnalysisWait();
+    stopStockfish();
+    analysisRunning = false;
+    const status = document.getElementById('analysis-status');
+    if (status) status.textContent = 'Анализ остановлен: начата новая партия.';
+    updateAnalysisControls();
+}
+
+function getWhitePerspectiveEvaluation(engineEvaluation, plyCount) {
+    if (engineEvaluation === null) return null;
+    return plyCount % 2 === 0 ? engineEvaluation : -engineEvaluation;
+}
+
+function classifyMoveLoss(loss) {
+    if (loss >= 150) return { label: 'Блиундер', className: 'blunder' };
+    if (loss >= 70) return { label: 'Ошибка', className: 'mistake' };
+    if (loss >= 35) return { label: 'Неточность', className: 'inaccuracy' };
+    return { label: 'Нормально', className: 'normal' };
+}
+
+async function analyzeCompletedGame() {
+    if (gameActive || analysisRunning || hintRequestPending) {
+        showNotification('Дождитесь окончания партии и текущего запроса Stockfish.', 'warning');
+        return;
+    }
+    const game = getCompletedGameForAnalysis();
+    const status = document.getElementById('analysis-status');
+    const resultsPanel = document.getElementById('analysis-results');
+    const moveList = document.getElementById('analysis-move-list');
+    if (!game || !status || !resultsPanel || !moveList) return;
+
+    analysisMoves = parseHistoryMoves(game.moves);
+    if (analysisMoves.length === 0) {
+        status.textContent = 'В завершённой партии нет ходов для анализа.';
+        return;
+    }
+
+    const uciMoves = analysisMoves.map(move => move.replace('-', ''));
+    analysisRunning = true;
+    const runToken = ++analysisRunToken;
+    analysisResults = [];
+    analysisPositionIndex = 0;
+    resultsPanel.hidden = true;
+    moveList.replaceChildren();
+    updateAnalysisControls();
+    status.textContent = `Подготовка Stockfish... 0 / ${analysisMoves.length} ходов`;
+
+    try {
+        const engine = await initStockfish();
+        if (runToken !== analysisRunToken) {
+            stopStockfish();
+            return;
+        }
+        await waitForStockfishReady(engine);
+        if (runToken !== analysisRunToken) return;
+        engine.postMessage('setoption name Threads value 1');
+        let previousEval = getWhitePerspectiveEvaluation(
+            await requestStockfishEvaluation(engine, []),
+            0
+        );
+        if (previousEval === null) previousEval = 0;
+
+        for (let index = 0; index < uciMoves.length; index++) {
+            if (runToken !== analysisRunToken) return;
+            const engineEval = await requestStockfishEvaluation(engine, uciMoves.slice(0, index + 1));
+            if (runToken !== analysisRunToken) return;
+            const currentEval = getWhitePerspectiveEvaluation(engineEval, index + 1);
+            const fallbackEval = currentEval === null ? previousEval : currentEval;
+            const loss = Math.max(0, index % 2 === 0 ? previousEval - fallbackEval : fallbackEval - previousEval);
+            analysisResults.push({
+                move: analysisMoves[index],
+                loss,
+                evaluation: fallbackEval,
+                ...classifyMoveLoss(loss)
+            });
+            previousEval = fallbackEval;
+            status.textContent = `Анализ ходов: ${index + 1} / ${analysisMoves.length}`;
+            await new Promise(resolve => setTimeout(resolve, 0));
+        }
+
+        renderAnalysisResults();
+        status.textContent = `Анализ завершён: ${analysisResults.length} ходов.`;
+    } catch (error) {
+        if (runToken === analysisRunToken) {
+            console.error('Ошибка анализа партии:', error);
+            status.textContent = 'Не удалось завершить анализ Stockfish. Проверьте подключение к движку и попробуйте снова.';
+        }
+    } finally {
+        if (runToken === analysisRunToken) {
+            stopStockfish();
+            analysisRunning = false;
+            updateAnalysisControls();
+        }
+    }
+}
+
+function renderAnalysisResults() {
+    const resultsPanel = document.getElementById('analysis-results');
+    const moveList = document.getElementById('analysis-move-list');
+    if (!resultsPanel || !moveList) return;
+    moveList.replaceChildren();
+    analysisResults.forEach((result, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = `analysis-move ${result.className}`;
+        button.textContent = `${index + 1}. ${result.move} — ${result.label} (${result.loss} cp)`;
+        button.addEventListener('click', () => renderAnalysisPosition(index + 1));
+        moveList.appendChild(button);
+    });
+    resultsPanel.hidden = false;
+    renderAnalysisPosition(analysisMoves.length);
+}
+
+function renderAnalysisPosition(positionIndex) {
+    const boardView = document.getElementById('analysis-board');
+    if (!boardView) return;
+    analysisPositionIndex = Math.max(0, Math.min(analysisMoves.length, positionIndex));
+    const position = createReplayBoard(analysisMoves, analysisPositionIndex);
+    boardView.replaceChildren();
+    for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+            const square = document.createElement('div');
+            square.className = `analysis-square ${(row + col) % 2 === 0 ? 'light' : 'dark'}`;
+            if (position[row][col]) square.textContent = pieces[position[row][col].color][position[row][col].type];
+            boardView.appendChild(square);
+        }
+    }
+    const step = document.getElementById('analysis-step');
+    const previous = document.getElementById('analysis-prev');
+    const next = document.getElementById('analysis-next');
+    if (step) step.textContent = `${analysisPositionIndex} / ${analysisMoves.length}`;
+    if (previous) previous.disabled = analysisPositionIndex === 0;
+    if (next) next.disabled = analysisPositionIndex >= analysisMoves.length;
+}
+
+function stepAnalysisPosition(direction) {
+    renderAnalysisPosition(analysisPositionIndex + direction);
+}
+
+function getPuzzleDateKey() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function getPuzzleProgressKey() {
+    let userId = 'guest';
+    try {
+        const user = JSON.parse(localStorage.getItem('userData') || 'null');
+        if (user?.id) userId = String(user.id);
+    } catch (error) {
+        console.error('Не удалось определить пользователя для задач дня:', error);
+    }
+    return `dailyPuzzleProgress:${getPuzzleDateKey()}:${userId}`;
+}
+
+function parsePuzzleFen(fen) {
+    const fields = String(fen || '').trim().split(/\s+/);
+    if (fields.length < 4 || !['w', 'b'].includes(fields[1])) throw new Error('Некорректная сторона хода в FEN.');
+    const rows = fields[0].split('/');
+    if (rows.length !== 8) throw new Error('Некорректная FEN-позиция задачи.');
+    const typeByFen = { p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king' };
+    const parsedBoard = rows.map(rowText => {
+        const row = [];
+        for (const character of rowText) {
+            if (/^[1-8]$/.test(character)) {
+                for (let count = 0; count < Number(character); count++) row.push(null);
+                continue;
+            }
+            const type = typeByFen[character.toLowerCase()];
+            if (!type) throw new Error('Некорректная фигура в FEN задачи.');
+            row.push({ type, color: character === character.toUpperCase() ? 'white' : 'black' });
+        }
+        if (row.length !== 8) throw new Error('FEN задачи должна содержать 8 клеток в каждом ряду.');
+        return row;
+    });
+    const rights = fields[2] === '-' ? '' : fields[2];
+    let target = null;
+    if (fields[3] !== '-') {
+        const file = fields[3].charCodeAt(0) - 97;
+        const rank = Number(fields[3][1]);
+        if (file < 0 || file > 7 || rank < 1 || rank > 8) throw new Error('Некорректная цель взятия на проходе в FEN.');
+        target = { row: 8 - rank, col: file };
+    }
+    return {
+        board: parsedBoard,
+        currentPlayer: fields[1] === 'w' ? 'white' : 'black',
+        castlingRights: {
+            white: { kingSide: rights.includes('K'), queenSide: rights.includes('Q') },
+            black: { kingSide: rights.includes('k'), queenSide: rights.includes('q') }
+        },
+        enPassantTarget: target
+    };
+}
+
+function loadDailyPuzzleIfNeeded() {
+    const key = getPuzzleProgressKey();
+    if (key === puzzleProgressKey && puzzleBoard) return;
+    puzzleProgressKey = key;
+    try {
+        const stored = JSON.parse(localStorage.getItem(key) || '{"solved":0}');
+        puzzleSolvedCount = Math.max(0, Math.min(dailyPuzzles.length, Number(stored.solved) || 0));
+    } catch (error) {
+        console.error('Не удалось загрузить прогресс задач дня:', error);
+        puzzleSolvedCount = 0;
+    }
+    puzzleCurrentIndex = Math.min(puzzleSolvedCount, dailyPuzzles.length - 1);
+    renderCurrentDailyPuzzle(false);
+}
+
+function saveDailyPuzzleProgress() {
+    try {
+        localStorage.setItem(puzzleProgressKey, JSON.stringify({ solved: puzzleSolvedCount }));
+    } catch (error) {
+        console.error('Не удалось сохранить прогресс задач дня:', error);
+        showNotification('Не удалось сохранить прогресс задач на этом устройстве.', 'error');
+    }
+}
+
+function renderCurrentDailyPuzzle(preserveFeedback) {
+    const progress = document.getElementById('puzzle-progress');
+    const status = document.getElementById('puzzle-status');
+    const feedback = document.getElementById('puzzle-feedback');
+    const comment = document.getElementById('puzzle-comment');
+    if (progress) progress.textContent = `Очки сегодня: ${puzzleSolvedCount} / ${dailyPuzzles.length}`;
+    if (!preserveFeedback && feedback) feedback.textContent = '';
+    puzzleSelectedSquare = null;
+    puzzleHighlightedMove = null;
+
+    const puzzle = dailyPuzzles[puzzleCurrentIndex];
+    try {
+        const position = parsePuzzleFen(puzzle.fen);
+        if (position.currentPlayer !== 'white') throw new Error('Задача должна начинаться ходом белых.');
+        puzzleBoard = position.board;
+        puzzleCastlingRights = position.castlingRights;
+        puzzleEnPassantTarget = position.enPassantTarget;
+        if (comment) comment.textContent = puzzle.comment;
+        if (puzzleSolvedCount >= dailyPuzzles.length) {
+            if (status) status.textContent = 'На сегодня все задачи решены. Возвращайтесь завтра за новым прогрессом.';
+        } else if (status) {
+            status.textContent = `Задача ${puzzleCurrentIndex + 1} из ${dailyPuzzles.length}. Найдите лучший ход белых.`;
+        }
+        renderPuzzleBoard();
+    } catch (error) {
+        console.error(`Некорректная задача ${puzzle.id}:`, error);
+        if (status) status.textContent = 'Не удалось загрузить позицию задачи.';
+        if (comment) comment.textContent = '';
+    }
+}
+
+function renderPuzzleBoard() {
+    if (!puzzleBoardElement || !puzzleBoard) return;
+    puzzleBoardElement.replaceChildren();
+    for (let row = 0; row < 8; row++) {
+        for (let col = 0; col < 8; col++) {
+            const square = document.createElement('button');
+            square.type = 'button';
+            square.className = `puzzle-square ${(row + col) % 2 === 0 ? 'light' : 'dark'}`;
+            square.dataset.row = String(row);
+            square.dataset.col = String(col);
+            const piece = puzzleBoard[row][col];
+            if (piece) square.textContent = pieces[piece.color][piece.type];
+            if (puzzleSelectedSquare?.row === row && puzzleSelectedSquare?.col === col) {
+                square.classList.add('selected');
+            }
+            if (puzzleHighlightedMove?.from.row === row && puzzleHighlightedMove?.from.col === col) {
+                square.classList.add('puzzle-correct-from');
+            }
+            if (puzzleHighlightedMove?.to.row === row && puzzleHighlightedMove?.to.col === col) {
+                square.classList.add('puzzle-correct-to');
+            }
+            puzzleBoardElement.appendChild(square);
+        }
+    }
+}
+
+function getPuzzleLegalMoves(row, col) {
+    const previousState = { board, castlingRights, enPassantTarget, currentPlayer };
+    board = puzzleBoard;
+    castlingRights = puzzleCastlingRights;
+    enPassantTarget = puzzleEnPassantTarget;
+    currentPlayer = 'white';
+    try {
+        return getPossibleMoves(row, col);
+    } finally {
+        board = previousState.board;
+        castlingRights = previousState.castlingRights;
+        enPassantTarget = previousState.enPassantTarget;
+        currentPlayer = previousState.currentPlayer;
+    }
+}
+
+function puzzleSquareName(square) {
+    return `${String.fromCharCode(97 + square.col)}${8 - square.row}`;
+}
+
+function showPuzzleSolution(puzzle) {
+    const feedback = document.getElementById('puzzle-feedback');
+    const from = { row: 8 - Number(puzzle.move[1]), col: puzzle.move.charCodeAt(0) - 97 };
+    const to = { row: 8 - Number(puzzle.move[3]), col: puzzle.move.charCodeAt(2) - 97 };
+    puzzleHighlightedMove = { from, to };
+    puzzleSelectedSquare = null;
+    if (feedback) feedback.textContent = `Неверно. Правильный ход: ${puzzle.move.slice(0, 2)} → ${puzzle.move.slice(2, 4)}. ${puzzle.comment}`;
+    renderPuzzleBoard();
+}
+
+function handlePuzzleSquareClick(row, col) {
+    if (!puzzleBoard || puzzleSolvedCount >= dailyPuzzles.length) return;
+    const feedback = document.getElementById('puzzle-feedback');
+    const piece = puzzleBoard[row]?.[col];
+    if (!puzzleSelectedSquare) {
+        if (piece?.color === 'white') {
+            puzzleSelectedSquare = { row, col };
+            puzzleHighlightedMove = null;
+            if (feedback) feedback.textContent = '';
+            renderPuzzleBoard();
+        }
+        return;
+    }
+
+    const from = puzzleSelectedSquare;
+    if (from.row === row && from.col === col) {
+        puzzleSelectedSquare = null;
+        renderPuzzleBoard();
+        return;
+    }
+    if (piece?.color === 'white') {
+        puzzleSelectedSquare = { row, col };
+        renderPuzzleBoard();
+        return;
+    }
+
+    const legal = getPuzzleLegalMoves(from.row, from.col).some(move => move.row === row && move.col === col);
+    const attemptedMove = `${puzzleSquareName(from)}${puzzleSquareName({ row, col })}`;
+    const puzzle = dailyPuzzles[puzzleCurrentIndex];
+    if (!legal || attemptedMove !== puzzle.move) {
+        showPuzzleSolution(puzzle);
+        return;
+    }
+
+    puzzleSolvedCount++;
+    saveDailyPuzzleProgress();
+    if (feedback) feedback.textContent = `Верно! +1 очко. ${puzzle.comment}`;
+    puzzleCurrentIndex = Math.min(puzzleSolvedCount, dailyPuzzles.length - 1);
+    renderCurrentDailyPuzzle(true);
+    if (puzzleSolvedCount >= dailyPuzzles.length && feedback) {
+        feedback.textContent = 'Отличная работа! Все 5 задач дня решены.';
+    }
+}
+
+function getRoomPlayer() {
+    try {
+        const user = JSON.parse(localStorage.getItem('userData') || 'null');
+        const id = Number(user?.id);
+        return {
+            userId: Number.isSafeInteger(id) && id > 0 ? id : null,
+            username: String(user?.username || 'Гость').slice(0, 32)
+        };
+    } catch (error) {
+        console.error('Не удалось прочитать профиль для онлайн-комнаты:', error);
+        return { userId: null, username: 'Гость' };
+    }
+}
+
+function showOnlineRoomLink(joinUrl) {
+    const row = document.getElementById('online-room-link-row');
+    const input = document.getElementById('online-room-link');
+    if (row && input) {
+        input.value = new URL(joinUrl, location.origin).href;
+        row.hidden = false;
+    }
+}
+
+function setOnlineRoomSession(data) {
+    stopOnlinePolling();
+    clearInterval(timerInterval);
+    timerInterval = null;
+    gameActive = false;
+    selectedSquare = null;
+    possibleMoves = [];
+    onlineRoom = {
+        roomId: data.roomId,
+        playerToken: data.playerToken,
+        color: data.color,
+        version: -1,
+        gameStarted: false,
+        finishRequested: false
+    };
+    onlineLastAppliedVersion = -1;
+    playerColor = data.color;
+    gameMode = 'pvp';
+    activeGameMode = 'pvp';
+    boardFlipped = playerColor === 'black';
+    const roomInput = document.getElementById('online-room-id');
+    if (roomInput) roomInput.value = data.roomId;
+    const leaveButton = document.getElementById('online-leave-button');
+    if (leaveButton) leaveButton.hidden = false;
+    const linkRow = document.getElementById('online-room-link-row');
+    if (linkRow && data.color !== 'white') linkRow.hidden = true;
+    const status = document.getElementById('online-room-status');
+    if (status) status.textContent = `Вы подключились за ${playerColor === 'white' ? 'белых' : 'чёрных'}. Подключаемся к комнате...`;
+    if (data.state) applyOnlineRoomState(data.state);
+    startOnlinePolling();
+}
+
+async function createOnlineRoom() {
+    try {
+        const player = getRoomPlayer();
+        const response = await fetch('/api/room/create', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(player)
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Не удалось создать комнату.');
+        setOnlineRoomSession(data);
+        showOnlineRoomLink(data.joinUrl);
+        showTab('online');
+    } catch (error) {
+        console.error('Create online room error:', error);
+        const status = document.getElementById('online-room-status');
+        if (status) status.textContent = error.message || 'Ошибка создания комнаты.';
+    }
+}
+
+function getRoomIdFromInput() {
+    const input = document.getElementById('online-room-id');
+    const raw = String(input?.value || new URLSearchParams(location.search).get('room') || '').trim();
+    try {
+        const parsed = new URL(raw, location.origin);
+        const fromUrl = parsed.searchParams.get('room');
+        return fromUrl || raw;
+    } catch (error) {
+        return raw;
+    }
+}
+
+async function joinOnlineRoom() {
+    const roomId = getRoomIdFromInput();
+    if (!/^[a-f0-9]{12}$/i.test(roomId)) {
+        const status = document.getElementById('online-room-status');
+        if (status) status.textContent = 'Введите корректную ссылку или код комнаты.';
+        return;
+    }
+    try {
+        const response = await fetch(`/api/room/${encodeURIComponent(roomId)}/join`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(getRoomPlayer())
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Не удалось присоединиться к комнате.');
+        setOnlineRoomSession(data);
+        showTab('online');
+    } catch (error) {
+        console.error('Join online room error:', error);
+        const status = document.getElementById('online-room-status');
+        if (status) status.textContent = error.message || 'Ошибка подключения к комнате.';
+    }
+}
+
+async function copyOnlineRoomLink() {
+    const input = document.getElementById('online-room-link');
+    if (!input?.value) return;
+    try {
+        await navigator.clipboard.writeText(input.value);
+        showNotification('Ссылка на комнату скопирована.', 'success');
+    } catch (error) {
+        input.focus();
+        input.select();
+        showNotification('Ссылка выделена — скопируйте её вручную.', 'warning');
+    }
+}
+
+function stopOnlinePolling() {
+    clearTimeout(onlinePollTimeout);
+    onlinePollTimeout = null;
+    onlinePollGeneration++;
+    onlinePollInFlight = false;
+}
+
+function startOnlinePolling() {
+    clearTimeout(onlinePollTimeout);
+    const generation = ++onlinePollGeneration;
+    pollOnlineRoom(generation);
+}
+
+function scheduleOnlinePoll(generation, delay = 1200) {
+    clearTimeout(onlinePollTimeout);
+    if (!onlineRoom || document.hidden || generation !== onlinePollGeneration) return;
+    onlinePollTimeout = setTimeout(() => pollOnlineRoom(generation), delay);
+}
+
+async function pollOnlineRoom(generation) {
+    if (!onlineRoom || document.hidden || generation !== onlinePollGeneration || onlinePollInFlight) return;
+    onlinePollInFlight = true;
+    try {
+        const response = await fetch(
+            `/api/room/${encodeURIComponent(onlineRoom.roomId)}/state?token=${encodeURIComponent(onlineRoom.playerToken)}`
+        );
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Связь с комнатой потеряна.');
+        if (generation === onlinePollGeneration) applyOnlineRoomState(data.state);
+    } catch (error) {
+        if (generation === onlinePollGeneration) {
+            console.error('Online room poll error:', error);
+            const status = document.getElementById('online-room-status');
+            if (status) status.textContent = 'Нет связи с комнатой. Повторное подключение...';
+        }
+    } finally {
+        onlinePollInFlight = false;
+        if (onlineRoom) scheduleOnlinePoll(onlinePollGeneration, generation === onlinePollGeneration ? 1200 : 100);
+    }
+}
+
+function updateOnlineRoomStatus(state) {
+    const status = document.getElementById('online-room-status');
+    if (!status || !onlineRoom) return;
+    const otherColor = onlineRoom.color === 'white' ? 'black' : 'white';
+    const opponent = state.players?.[otherColor];
+    if (state.finished) {
+        status.textContent = state.winner === 'draw'
+            ? 'Партия завершена вничью.'
+            : `Партия завершена. Победили ${state.winner === 'white' ? 'белые' : 'чёрные'}.`;
+    } else if (!state.started) {
+        status.textContent = 'Комната создана. Ожидаем второго игрока — отправьте ссылку приглашения.';
+    } else if (!opponent?.connected) {
+        status.textContent = 'Соперник отключился или ещё подключается. Комната остаётся доступной.';
+    } else {
+        status.textContent = `Вы играете за ${onlineRoom.color === 'white' ? 'белых' : 'чёрных'}. Соперник: ${opponent.username || 'Игрок'}. Ход ${state.turn === 'white' ? 'белых' : 'чёрных'}.`;
+    }
+}
+
+function applyOnlineRoomState(state) {
+    if (!onlineRoom || !state) return;
+    onlineRoom.lastState = state;
+    onlineRoom.version = Number(state.version) || 0;
+    updateOnlineRoomStatus(state);
+    if (!state.started || state.version <= onlineLastAppliedVersion) return;
+    try {
+        const position = parsePuzzleFen(state.fen);
+        if (!onlineRoom.gameStarted) {
+            onlineRoom.gameStarted = true;
+            gameSaved = false;
+            moveHistory = [];
+            selectedSquare = null;
+            possibleMoves = [];
+            whiteTime = selectedTime;
+            blackTime = selectedTime;
+            activeGameMode = 'pvp';
+        }
+        board = position.board;
+        currentPlayer = position.currentPlayer;
+        castlingRights = position.castlingRights;
+        enPassantTarget = position.enPassantTarget;
+        gameMoves = Array.isArray(state.moves) ? state.moves.slice() : [];
+        gameActive = !state.finished;
+        onlineLastAppliedVersion = Number(state.version);
+        if (state.finished) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+            const result = state.winner === 'draw' ? 'draw' : state.winner === onlineRoom.color ? 'win' : 'loss';
+            statusElement.textContent = state.winner === 'draw'
+                ? '🤝 Онлайн-партия завершилась вничью.'
+                : `🏁 Онлайн-партия завершена. Победили ${state.winner === 'white' ? 'белые' : 'чёрные'}.`;
+            if (!gameSaved) saveGame(result);
+            const player = getRoomPlayer();
+            if (player.userId) refreshUserProfile(player.userId);
+        } else {
+            updateStatus();
+            if (!timerInterval) startTimer();
+        }
+        updateTimer();
+        updateMovesPanel();
+        renderBoard();
+    } catch (error) {
+        console.error('Invalid online room position:', error);
+        const status = document.getElementById('online-room-status');
+        if (status) status.textContent = 'Не удалось синхронизировать позицию онлайн-партии.';
+    }
+}
+
+async function submitOnlineMove(from, to) {
+    if (!onlineRoom || onlineMovePending) return;
+    const room = onlineRoom;
+    const expectedVersion = room.version;
+    const move = `${puzzleSquareName(from)}${puzzleSquareName(to)}`;
+    onlineMovePending = true;
+    onlineFinishPending = null;
+    makeMove(from, to);
+    const pendingResult = onlineFinishPending;
+    try {
+        const response = await fetch(`/api/room/${encodeURIComponent(room.roomId)}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                playerToken: room.playerToken,
+                expectedVersion,
+                move,
+                fen: boardToFEN()
+            })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Ход не принят комнатой.');
+        applyOnlineRoomState(data.state);
+        if (pendingResult) await finishOnlineRoom(pendingResult);
+    } catch (error) {
+        console.error('Submit online move error:', error);
+        const status = document.getElementById('online-room-status');
+        if (status) status.textContent = error.message || 'Не удалось отправить ход.';
+        gameSaved = false;
+        onlineFinishPending = null;
+        onlineLastAppliedVersion = expectedVersion - 1;
+        await pollOnlineRoom(onlinePollGeneration);
+    } finally {
+        onlineMovePending = false;
+    }
+}
+
+async function finishOnlineRoom(result) {
+    if (!onlineRoom || onlineRoom.finishRequested) return;
+    const room = onlineRoom;
+    room.finishRequested = true;
+    try {
+        const response = await fetch(`/api/room/${encodeURIComponent(room.roomId)}/finish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ playerToken: room.playerToken, result })
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || 'Не удалось завершить онлайн-партию.');
+        applyOnlineRoomState(data.state);
+        if (data.profile) {
+            const storedUser = JSON.parse(localStorage.getItem('userData') || 'null');
+            if (storedUser && String(storedUser.id) === String(data.profile.id)) {
+                localStorage.setItem('userData', JSON.stringify({ ...storedUser, ...data.profile }));
+                updateUI();
+                await loadLeaderboard();
+            }
+        }
+    } catch (error) {
+        room.finishRequested = false;
+        console.error('Finish online room error:', error);
+        const status = document.getElementById('online-room-status');
+        if (status) status.textContent = error.message || 'Не удалось завершить онлайн-партию.';
+    }
+}
+
+function leaveOnlineRoom(showMessage = true) {
+    if (!onlineRoom) return;
+    stopOnlinePolling();
+    onlineRoom = null;
+    onlineMovePending = false;
+    onlineFinishPending = null;
+    onlineLastAppliedVersion = -1;
+    clearInterval(timerInterval);
+    timerInterval = null;
+    gameActive = false;
+    const leaveButton = document.getElementById('online-leave-button');
+    const linkRow = document.getElementById('online-room-link-row');
+    if (leaveButton) leaveButton.hidden = true;
+    if (linkRow) linkRow.hidden = true;
+    const status = document.getElementById('online-room-status');
+    if (showMessage && status) status.textContent = 'Вы вышли из комнаты.';
 }
 
 // Вспомогательная функция для анализа (чтобы не забивать showTab)
 function runPositionAnalysis() {
     const legalMovesCount = document.getElementById('legal-moves');
     if (!legalMovesCount) return;
+    if (!Array.isArray(board) || board.length !== 8 || board.some(row => !Array.isArray(row))) {
+        legalMovesCount.textContent = '0';
+        const stats = document.getElementById('game-stats');
+        if (stats) stats.textContent = 'Начните новую игру для анализа';
+        return;
+    }
 
     let count = 0;
     let whiteMat = 0, blackMat = 0;
@@ -1928,24 +3080,34 @@ function runPositionAnalysis() {
     }
 }
 // Инициализация при загрузке страницы
-themeToggle.addEventListener('change', () => {
-    if (themeToggle.checked) {
+function applyThemePreference(isDark) {
+    if (isDark) {
         document.body.classList.remove('light-theme');
         localStorage.setItem('chessTheme', 'dark');
     } else {
         document.body.classList.add('light-theme');
         localStorage.setItem('chessTheme', 'light');
     }
-});
+    if (themeToggle) themeToggle.checked = isDark;
+    if (settingsThemeToggle) settingsThemeToggle.checked = isDark;
+}
+
+if (themeToggle) themeToggle.addEventListener('change', () => applyThemePreference(themeToggle.checked));
+if (settingsThemeToggle) settingsThemeToggle.addEventListener('change', () => applyThemePreference(settingsThemeToggle.checked));
 
 // Загрузить сохранённые настройки
 if (localStorage.getItem('chessTheme') === 'light') {
     document.body.classList.add('light-theme');
-    themeToggle.checked = false;
+    if (themeToggle) themeToggle.checked = false;
+    if (settingsThemeToggle) settingsThemeToggle.checked = false;
+} else {
+    if (themeToggle) themeToggle.checked = true;
+    if (settingsThemeToggle) settingsThemeToggle.checked = true;
 }
 
 if (localStorage.getItem('enableSounds') === 'false') enableSounds = false;
 else document.getElementById('sound-toggle').checked = enableSounds;
+updateSoundButton();
 
 if (localStorage.getItem('enablePremiumSounds') === 'true') enablePremiumSounds = true;
 else enablePremiumSounds = false;
@@ -1959,10 +3121,7 @@ else document.getElementById('coordinates-toggle').checked = enableCoordinates;
 if (localStorage.getItem('enableMaterial') === 'false') enableMaterial = false;
 else document.getElementById('material-toggle').checked = enableMaterial;
 
-if (localStorage.getItem('playerElo')) playerElo = parseInt(localStorage.getItem('playerElo'));
 if (localStorage.getItem('eloHistory')) eloHistory = JSON.parse(localStorage.getItem('eloHistory'));
-document.getElementById('elo-slider').value = playerElo;
-document.getElementById('elo-rating').textContent = playerElo;
 
 if (localStorage.getItem('boardSize')) currentBoardSize = localStorage.getItem('boardSize');
 document.getElementById('board-size').value = currentBoardSize;
@@ -1977,6 +3136,7 @@ if (localStorage.getItem('playerColor')) {
 window.addEventListener('DOMContentLoaded', () => {
     // Проверить авторизацию пользователя
     checkAuth();
+    updateAnalysisControls();
     
     const sizeButtons = document.querySelectorAll('.size-btn');
     sizeButtons.forEach(btn => btn.classList.remove('active'));
@@ -2010,11 +3170,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (pieceSetSelect) pieceSetSelect.value = currentPieceSet;
     const premiumSoundToggle = document.getElementById('premium-sound-toggle');
     if (premiumSoundToggle) premiumSoundToggle.checked = enablePremiumSounds;
-    loadMessages();
 });
 
-if (localStorage.getItem('difficulty')) {
-    difficulty = parseInt(localStorage.getItem('difficulty'));
+const savedDifficulty = Number(localStorage.getItem('difficulty'));
+if ([1, 5, 10, 20].includes(savedDifficulty)) {
+    const savedUser = JSON.parse(localStorage.getItem('userData') || 'null');
+    difficulty = savedDifficulty === 20 && savedUser?.is_premium !== true ? 10 : savedDifficulty;
 }
 
 if (localStorage.getItem('playerColor')) {
@@ -2025,7 +3186,21 @@ if (localStorage.getItem('playerColor')) {
 document.getElementById('sound-toggle').addEventListener('change', (e) => {
     enableSounds = e.target.checked;
     localStorage.setItem('enableSounds', enableSounds);
+    updateSoundButton();
 });
+
+function updateSoundButton() {
+    const soundButton = document.getElementById('sound-button');
+    const soundToggle = document.getElementById('sound-toggle');
+    if (soundButton) soundButton.textContent = enableSounds ? '🔊 Звук включён' : '🔇 Звук выключен';
+    if (soundToggle) soundToggle.checked = enableSounds;
+}
+
+function toggleSound() {
+    enableSounds = !enableSounds;
+    localStorage.setItem('enableSounds', String(enableSounds));
+    updateSoundButton();
+}
 
 document.getElementById('animation-toggle').addEventListener('change', (e) => {
     enableAnimations = e.target.checked;
@@ -2055,7 +3230,7 @@ console.log('🎮 Инициализация Chess Master...');
 function updateDifficultyButtons() {
     const diffButtons = document.getElementById('difficulty-buttons');
     const userData = JSON.parse(localStorage.getItem('userData') || '{}');
-    const isPremium = !!userData.is_premium;
+    const isPremium = userData.is_premium === true;
     if (diffButtons) {
         diffButtons.querySelectorAll('button').forEach(btn => {
             btn.style.backgroundColor = '';
@@ -2139,13 +3314,15 @@ function startGameFromLanding() {
 // Функция для обновления статистики на landing странице
 function updateLandingStats() {
     const gameHistory = JSON.parse(localStorage.getItem('gameHistory')) || [];
+    const user = JSON.parse(localStorage.getItem('userData') || 'null');
+    const elo = Number(user?.elo);
     
     const landingElo = document.getElementById('landing-elo');
     const landingGames = document.getElementById('landing-games');
     const landingWins = document.getElementById('landing-wins');
     const landingTip = document.getElementById('landing-tip');
     
-    if (landingElo) landingElo.textContent = playerElo;
+    if (landingElo) landingElo.textContent = Number.isFinite(elo) ? String(elo) : '—';
     if (landingGames) landingGames.textContent = gameHistory.length;
     
     let wins = 0;
@@ -2155,38 +3332,15 @@ function updateLandingStats() {
     if (landingWins) landingWins.textContent = wins;
     
     // Генерируем совет на основе рейтинга
-    if (landingTip) {
-        let tip = '';
-        if (playerElo < 1200) {
-            const tips = [
-                '🎯 Совет: Развивай фигуры в дебюте, не обращай на мат в конце доски!',
-                '♔ Совет: Берегись за фигуры, каждая имеет значение!',
-                '🎪 Совет: Не спеши! Хороший ход часто лучше быстрого хода.',
-            ];
-            tip = tips[Math.floor(Math.random() * tips.length)];
-        } else if (playerElo < 1600) {
-            const tips = [
-                '🏰 Совет: Рокировка защитит твоего короля от атак!',
-                '🎲 Совет: Комбинации часто начинаются с теплого жертвоприношения.',
-                '📖 Совет: Изучи основные дебютные принципы!',
-            ];
-            tip = tips[Math.floor(Math.random() * tips.length)];
-        } else if (playerElo < 2000) {
-            const tips = [
-                '🔥 Совет: Позиционное понимание часто важнее тактики!',
-                '⚡ Совет: Создавай слабости в лагере противника.',
-                '🎨 Совет: Глубокий расчёт - ключ к победе на этом уровне.',
-            ];
-            tip = tips[Math.floor(Math.random() * tips.length)];
-        } else {
-            const tips = [
-                '👑 Совет: Ты мастер! Продолжай оттачивать своё мастерство.',
-                '🌟 Совет: Даже гроссмейстеры студируют партии для улучшения.',
-                '♞ Совет: Единственный путь вверх - это играть сильнее соперников!',
-            ];
-            tip = tips[Math.floor(Math.random() * tips.length)];
-        }
-        landingTip.textContent = tip;
+    if (landingTip && user && Number.isFinite(elo)) {
+        const tips = [
+            '🏰 Совет: Рокировка помогает защитить короля.',
+            '📖 Совет: В дебюте старайтесь развивать фигуры.',
+            '🎯 Совет: Перед ходом проверьте, не оставляете ли фигуру под боем.'
+        ];
+        landingTip.textContent = tips[Math.floor(Math.random() * tips.length)];
+    } else if (landingTip) {
+        landingTip.textContent = 'Войдите, чтобы увидеть статистику рейтинга.';
     }
 }
 
@@ -2438,6 +3592,8 @@ async function handleLogin(username, password) {
             currentUser = data;
             localStorage.setItem('userData', JSON.stringify(data));
             updateUI();
+            await refreshUserProfile(data.id);
+            await loadLeaderboard();
             closeAuthModal();
             
             // Создаем информативное уведомление с ролью и статусом
@@ -2445,7 +3601,7 @@ async function handleLogin(username, password) {
             if (data.role === 'admin') {
                 welcomeMsg += ' 👑 [Администратор]';
             }
-            if (data.is_premium) {
+            if (data.is_premium === true) {
                 welcomeMsg += ' 💎 [Premium активен]';
             }
             showNotification(welcomeMsg, 'success');
@@ -2479,7 +3635,7 @@ function updateUI() {
         }
     }
     if (buyBtn) {
-        if (!currentUserForUI || currentUserForUI.is_premium) {
+        if (!currentUserForUI || currentUserForUI.is_premium === true) {
             buyBtn.style.display = 'none';
         } else {
             buyBtn.style.display = 'block';
@@ -2488,8 +3644,8 @@ function updateUI() {
     // 🔥 ЖЕСТКАЯ ПРОВЕРКА localStorage
     const userProfile = document.getElementById('user-profile');
     const authButton = loginBtn;
-    const headerRight = document.querySelector('.header-right');
     const vipBadge = document.getElementById('vip-badge');
+    const adminNavLink = document.getElementById('admin-nav-link');
 
     console.log("[updateUI] 🔄 Запуск обновления интерфейса | isAuth:", !!userDataStr);
 
@@ -2498,10 +3654,11 @@ function updateUI() {
         console.log("[updateUI] 🔓 Пользователь НЕ авторизован");
         if (userProfile) userProfile.style.display = 'none';
         if (authButton) authButton.style.display = 'block';
-        const adminBtn = document.getElementById('admin-btn');
-        if (adminBtn) adminBtn.remove();
+        if (adminNavLink) adminNavLink.style.display = 'none';
         document.body.classList.remove('premium-theme');
         if (vipBadge) vipBadge.style.display = 'none';
+        updateEloDisplay();
+        updateLandingStats();
         return;
     }
 
@@ -2509,6 +3666,8 @@ function updateUI() {
     try {
         const user = JSON.parse(userDataStr);
         if (!user || !user.username) throw new Error('Invalid user data');
+        const isPremium = user.is_premium === true;
+        const energy = Math.max(0, Math.min(5, Number(user.energy) || 0));
         
         console.log(`[updateUI] 🟢 Авторизован: ${user.username} | Role: ${user.role} | Premium: ${user.is_premium}`);
         
@@ -2520,12 +3679,16 @@ function updateUI() {
         const nameEl = document.getElementById('user-name');
         const eloEl = document.getElementById('user-elo');
         const energyEl = document.getElementById('user-energy');
+        const leagueEl = document.getElementById('user-league');
+        const premiumEl = document.getElementById('user-premium');
         
         if (nameEl) nameEl.textContent = user.username || '-';
-        if (eloEl) eloEl.textContent = user.elo || 800;
+        if (eloEl) eloEl.textContent = user.elo ?? '-';
+        if (leagueEl) leagueEl.textContent = user.league || '-';
+        if (premiumEl) premiumEl.textContent = isPremium ? 'Да' : 'Нет';
 
         // 3️⃣ ПРЕМИУМ-РЕЖИМ И ЭНЕРГИЯ
-        if (user.is_premium) {
+        if (isPremium) {
             console.log("[updateUI] 👑 АКТИВИРУЮ PREMIUM-РЕЖИМ");
             document.body.classList.add('premium-theme');
             if (energyEl) {
@@ -2546,7 +3709,7 @@ function updateUI() {
             console.log("[updateUI] ⚪ Premium-режим отключен");
             document.body.classList.remove('premium-theme');
             if (energyEl) {
-                energyEl.textContent = user.energy || 0;
+                energyEl.textContent = String(energy);
                 energyEl.style.color = "";
                 energyEl.style.textShadow = '';
                 energyEl.style.fontWeight = 'normal';
@@ -2555,33 +3718,7 @@ function updateUI() {
         }
 
         // 4️⃣ АДМИНКА - ЖЕСТКАЯ ЛОГИКА (CRITICAL FIX)
-        let adminBtn = document.getElementById('admin-btn');
-        if (user.role === 'admin' && headerRight) {
-            console.log("[updateUI] 🔧 Проверяю админ-кнопку...");
-            if (!adminBtn) {
-                console.log("[updateUI] ➕ СОЗДАЮ админ-кнопку");
-                adminBtn = document.createElement('button');
-                adminBtn.id = 'admin-btn';
-                adminBtn.className = 'auth-button';
-                adminBtn.style.background = '#ff8c00';
-                adminBtn.style.marginRight = '10px';
-                adminBtn.style.fontWeight = 'bold';
-                adminBtn.style.fontSize = '0.95em';
-                adminBtn.textContent = '⚙️ Админка';
-                adminBtn.title = 'Панель администратора';
-                adminBtn.onclick = () => {
-                    console.log("[updateUI] Переход в админку");
-                    window.location.href = 'admin.html';
-                };
-                headerRight.prepend(adminBtn);
-                console.log("[updateUI] ✅ Админ-кнопка добавлена в DOM");
-            } else {
-                console.log("[updateUI] ✓ Админ-кнопка уже существует");
-            }
-        } else if (adminBtn) {
-            console.log("[updateUI] ❌ УДАЛЯЮ админ-кнопку (не админ)");
-            adminBtn.remove();
-        }
+        if (adminNavLink) adminNavLink.style.display = user.role === 'admin' ? '' : 'none';
 
         // 5️⃣ ПРЕМИУМ-ИНТЕРФЕЙС И ПРОЧИЕ КОМПОНЕНТЫ
         if (typeof checkPremiumSettings === 'function') {
@@ -2590,6 +3727,7 @@ function updateUI() {
         if (typeof updateLandingStats === 'function') {
             updateLandingStats();
         }
+        updateEloDisplay();
 
         console.log("[updateUI] ✅ Обновление завершено успешно");
 
@@ -2616,6 +3754,7 @@ function checkAuth() {
             console.log(`[checkAuth] ✅ ОК: Пользователь ${user.username} восстановлен из localStorage`);
             console.log(`[checkAuth] Role: ${user.role} | Premium: ${user.is_premium}`);
             updateUI(); // ГАРАНТИЯ: вызываем updateUI()
+            refreshUserProfile(user.id);
             return true;
         } catch (error) {
             console.error('[checkAuth] ❌ localStorage повреждена:', error.message);
@@ -2634,6 +3773,17 @@ function checkAuth() {
  */
 function logout() {
     console.log("[logout] 🚪 Выполняю выход...");
+    try {
+        const storedUser = JSON.parse(localStorage.getItem('userData') || 'null');
+        if (storedUser && storedUser.sessionToken) {
+            fetch('/logout', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${storedUser.sessionToken}` }
+            }).catch(error => console.warn('[logout] Не удалось отозвать серверную сессию:', error));
+        }
+    } catch (error) {
+        console.warn('[logout] Не удалось прочитать данные сессии:', error);
+    }
     currentUser = null;
     localStorage.removeItem('userData');
     document.body.classList.remove('premium-theme');
@@ -2813,34 +3963,66 @@ async function buyPremium(plan, price) {
 
 async function loadLeaderboard() {
     const content = document.getElementById('leaderboard-content');
+    const userRankElement = document.getElementById('leaderboard-user-rank');
+    if (!content) return;
     content.innerHTML = '<div class="leaderboard-loading">Загрузка...</div>';
 
     try {
-        const response = await fetch('/leaderboard');
+        const userData = JSON.parse(localStorage.getItem('userData') || 'null');
+        const url = userData?.id
+            ? `/leaderboard?userId=${encodeURIComponent(userData.id)}`
+            : '/leaderboard';
+        const response = await fetch(url);
         const data = await response.json();
 
         if (response.ok) {
-            content.innerHTML = `
-                <div class="leaderboard-list">
-                    ${data.leaderboard.map((player, index) => `
-                        <div class="leaderboard-item ${player.is_premium ? 'premium-player' : ''} ${index < 3 ? 'top3' : ''}">
-                            <div class="leaderboard-rank">${index + 1}</div>
-                            <div class="leaderboard-name">
-                                ${player.username}
-                                ${player.is_premium ? '<span class="leaderboard-premium-badge">VIP</span>' : ''}
-                            </div>
-                            <div class="leaderboard-elo">${player.elo}</div>
-                        </div>
-                    `).join('')}
-                </div>
-                
-            `;
+            content.replaceChildren();
+            const list = document.createElement('div');
+            list.className = 'leaderboard-list';
+            (data.leaderboard || []).forEach((player, index) => {
+                const row = document.createElement('div');
+                row.className = `leaderboard-item${player.is_premium === true ? ' premium-player' : ''}${index < 3 ? ' top3' : ''}`;
+
+                const rank = document.createElement('div');
+                rank.className = 'leaderboard-rank';
+                rank.textContent = String(player.rank || index + 1);
+                const name = document.createElement('div');
+                name.className = 'leaderboard-name';
+                name.textContent = player.username || 'Игрок';
+                if (player.is_premium === true) {
+                    const badge = document.createElement('span');
+                    badge.className = 'leaderboard-premium-badge';
+                    badge.textContent = 'VIP';
+                    name.append(' ', badge);
+                }
+                const league = document.createElement('div');
+                league.className = 'leaderboard-league';
+                league.textContent = player.league || '—';
+                const elo = document.createElement('div');
+                elo.className = 'leaderboard-elo';
+                elo.textContent = String(player.elo ?? '-');
+                row.append(rank, name, league, elo);
+                list.appendChild(row);
+            });
+            content.appendChild(list);
+
+            if (userRankElement) {
+                if (data.userRank) {
+                    userRankElement.textContent =
+                        `Ваше место: #${data.userRank.rank} · ${data.userRank.elo} Elo · ${data.userRank.league}`;
+                } else {
+                    userRankElement.textContent = userData
+                        ? 'Не удалось определить место в рейтинге.'
+                        : 'Войдите, чтобы увидеть своё место.';
+                }
+            }
         } else {
             content.innerHTML = '<div class="leaderboard-loading">Ошибка загрузки</div>';
         }
     } catch (error) {
         console.error('Leaderboard error:', error);
         content.innerHTML = '<div class="leaderboard-loading">Ошибка сети</div>';
+        if (userRankElement) userRankElement.textContent = '';
     }
 }
 
@@ -3003,7 +4185,7 @@ function checkPremiumSettings() {
         const blindToggle = document.getElementById('blindboard-toggle');
         const savedPieceSet = localStorage.getItem('pieceSet');
 
-        if (user.is_premium) {
+        if (user.is_premium === true) {
             console.log("[checkPremiumSettings] ✅ VIP статус активен. Разблокирую функции...");
 
             if (premiumBlock) {
@@ -3057,7 +4239,7 @@ function checkPremiumSettings() {
             if (premiumBlock) premiumBlock.style.display = 'none';
             document.body.classList.remove('premium-theme');
             if (energyDisplay) {
-                energyDisplay.innerText = user.energy || 0;
+                energyDisplay.innerText = String(Math.max(0, Math.min(5, Number(user.energy) || 0)));
                 energyDisplay.style.color = "";
                 energyDisplay.style.textShadow = '';
             }
@@ -3164,7 +4346,43 @@ async function loadMessages() {
     }
 }
 
-setInterval(loadMessages, 3000);
+function scheduleChatRefresh() {
+    clearTimeout(chatRefreshTimeout);
+    const chatTab = document.getElementById('chat');
+    if (!document.hidden && chatTab?.classList.contains('active')) {
+        chatRefreshTimeout = setTimeout(async () => {
+            await loadMessages();
+            scheduleChatRefresh();
+        }, 15000);
+    }
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+        clearTimeout(chatRefreshTimeout);
+        chatRefreshTimeout = null;
+        clearTimeout(onlinePollTimeout);
+        onlinePollTimeout = null;
+        return;
+    }
+    if (gameActive) startTimer();
+    scheduleChatRefresh();
+    if (onlineRoom) scheduleOnlinePoll(onlinePollGeneration, 0);
+});
+
+window.addEventListener('pagehide', () => {
+    clearInterval(timerInterval);
+    timerInterval = null;
+    clearTimeout(computerMoveTimeout);
+    computerMoveTimeout = null;
+    clearTimeout(chatRefreshTimeout);
+    chatRefreshTimeout = null;
+    if (window.energyInterval) clearInterval(window.energyInterval);
+    stopOnlinePolling();
+    stopStockfish();
+});
 
 // ✅ checkPremiumSettings() уже вызывается внутри updateUI() в DOMContentLoaded
 // Дополнительный вызов НЕ нужен - это вызовет дублирование!
@@ -3176,9 +4394,4 @@ window.onresize = function() {
     }
 };
 
-// Гарантируем запуск после полной загрузки DOM
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', updateUI);
-} else {
-    updateUI(); // Если скрипт загрузился позже DOM
-}
+if (document.readyState !== 'loading') updateUI();

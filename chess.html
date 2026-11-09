@@ -5,33 +5,39 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Шахматы - Chess Master</title>
     <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="theme.css">
 </head>
 <body>
   <header>
     <h1>♔ Chess Master ♚</h1>
+    <nav class="site-nav" aria-label="Основные страницы">
+        <a href="chess.html" aria-current="page">Игра</a>
+        <a href="admin.html" id="admin-nav-link" style="display:none;">Админка</a>
+        <a href="pay.html">Premium</a>
+        <a href="checkout.html">Оформление</a>
+    </nav>
     <div class="header-right">
-        <div class="theme-toggle">
-            <label>
-                <input type="checkbox" id="theme-toggle">
-                🌙 
-            </label>
+        <div class="header-toolbar">
+            <div class="theme-toggle">
+                <label title="Переключить тему">
+                    <input type="checkbox" id="theme-toggle-settings">
+                    🌙
+                </label>
+            </div>
+            <button id="buy-premium-btn" class="auth-button" style="display:none;" onclick="window.location.href='pay.html'">💎 Premium</button>
+            <button id="login-button" class="auth-button" onclick="openAuthModal()">Войти / Регистрация</button>
         </div>
-        
         <div id="user-profile" style="display:none;">
-            <span id="user-info">
-                Игрок: <strong id="user-name">-</strong><span id="vip-badge" class="vip-badge" style="display: none;">👑 VIP</span> | 
-                Рейтинг: <strong id="user-elo">-</strong> | 
-                Энергия: <strong id="user-energy">-</strong>
-                <span id="energy-timer-container" style="font-size: 0.8em; margin-left: 5px; color: #00ff00;">
-                    <span id="energy-timer"></span>
-                </span>
-            </span>
+            <div id="user-info">
+                <span class="profile-chip">Игрок <strong id="user-name">-</strong></span>
+                <span class="profile-chip">Рейтинг <strong id="user-elo">-</strong></span>
+                <span class="profile-chip">Энергия <strong id="user-energy">-</strong><span id="energy-timer"></span></span>
+                <span class="profile-chip">Лига <strong id="user-league">-</strong></span>
+                <span class="profile-chip">Premium <strong id="user-premium">-</strong></span>
+                <span id="vip-badge" class="vip-badge" style="display:none;">👑 VIP</span>
+            </div>
             <button class="logout-button" onclick="logout()">🚪 Выйти</button>
         </div>
-        <button id="buy-premium-btn" class="auth-button" style="background: linear-gradient(45deg, #ffd700, #ff8c00); color: black; margin-top: 10px; display:none;" onclick="window.location.href='pay.html'">
-            💎 Купить Premium 
-        </button>
-        <button id="login-button" class="auth-button" onclick="openAuthModal()">🔓 Войти / Регистрация</button>
     </div>
 </header>
     <!-- Модальное окно регистрации -->
@@ -72,6 +78,8 @@
             <button class="tab-button" onclick="showTab('leaderboard')" data-tab="leaderboard">🏆 Лидеры</button>
             <button class="tab-button" onclick="showTab('history')" data-tab="history">📊 История</button>
             <button class="tab-button" onclick="showTab('analyze')" data-tab="analyze">🔍 Анализ</button>
+            <button class="tab-button" onclick="showTab('puzzles')" data-tab="puzzles">🧩 Задачи</button>
+            <button class="tab-button" onclick="showTab('online')" data-tab="online">🌐 Онлайн</button>
             <button class="tab-button" onclick="showTab('settings')" data-tab="settings">⚙️ Настройки</button>
             <button class="tab-button" onclick="showTab('about')" data-tab="about">ℹ️ О программе</button>
         </div>
@@ -98,7 +106,7 @@
                     
                     <div class="landing-stats">
                         <div class="stat-mini">
-                            <div class="stat-mini-value" id="landing-elo">1200</div>
+                            <div class="stat-mini-value" id="landing-elo">—</div>
                             <div class="stat-mini-label">Ваш Elo</div>
                         </div>
                         <div class="stat-mini">
@@ -252,6 +260,7 @@
             <div class="button-row">
                 <button onclick="undoMove()">↶ Отменить ход</button>
                 <button onclick="showHint()" title="Показать лучший ход">💡 Подсказка</button>
+                <button id="sound-button" type="button" onclick="toggleSound()">🔊 Звук включён</button>
                 <button class="primary" onclick="resetGame()">🔄 Новая игра</button>
                 <button class="danger" onclick="resignGame()">🚩 Сдаться</button>
                 <button onclick="agreeToDrawGame()" title="Согласиться на ничью">🤝 Ничья</button>
@@ -303,6 +312,7 @@
         <div id="leaderboard" class="tab-content">
             <div class="leaderboard-panel">
                 <h2>🏆 Таблица Лидеров</h2>
+                <div id="leaderboard-user-rank" class="leaderboard-user-rank"></div>
                 <div id="leaderboard-content">
                     <div class="leaderboard-loading">Загрузка лидеров...</div>
                 </div>
@@ -324,7 +334,21 @@
 
         <div id="analyze" class="tab-content">
             <div class="analyze-panel">
-                <h2>🔍 Анализ позиции</h2>
+                <h2>🔍 Анализ партии</h2>
+                <p class="analysis-note">Полный анализ доступен после завершения партии. Он выполняется в фоне и не изменяет основную доску.</p>
+                <button id="analyze-game-button" type="button" onclick="analyzeCompletedGame()" disabled>🔍 Анализировать завершённую партию</button>
+                <div id="analysis-status" class="analysis-status" aria-live="polite"></div>
+                <div id="analysis-results" class="analysis-results" hidden>
+                    <div class="analysis-position">
+                        <div id="analysis-board" class="analysis-board" aria-label="Доска анализа"></div>
+                        <div class="analysis-navigation">
+                            <button id="analysis-prev" type="button" onclick="stepAnalysisPosition(-1)" disabled>← Назад</button>
+                            <span id="analysis-step">0 / 0</span>
+                            <button id="analysis-next" type="button" onclick="stepAnalysisPosition(1)" disabled>Вперёд →</button>
+                        </div>
+                    </div>
+                    <div id="analysis-move-list" class="analysis-move-list" aria-label="Оценки ходов"></div>
+                </div>
                 <div class="stats-grid">
                     <div class="stat-box">
                         <label>Оценка позиции:</label>
@@ -351,6 +375,35 @@
                     <button onclick="exportJSON()">📦 Скачать JSON</button>
                     <button onclick="shareGame()">🔗 Поделиться</button>
                 </div>
+            </div>
+        </div>
+
+        <div id="puzzles" class="tab-content">
+            <div class="puzzles-panel">
+                <h2>🧩 Задачи дня</h2>
+                <p id="puzzle-progress" class="puzzle-progress">Очки сегодня: 0 / 5</p>
+                <p id="puzzle-status" class="puzzle-status" aria-live="polite">Откройте вкладку, чтобы загрузить задачи.</p>
+                <p id="puzzle-feedback" class="puzzle-feedback" aria-live="polite"></p>
+                <div id="puzzle-board" class="puzzle-board" aria-label="Шахматная доска задачи"></div>
+                <p id="puzzle-comment" class="puzzle-comment"></p>
+            </div>
+        </div>
+
+        <div id="online" class="tab-content">
+            <div class="online-panel">
+                <h2>🌐 Игра с другом</h2>
+                <p class="online-note">Создайте комнату и отправьте ссылку сопернику. После входа обоих игроков ходы синхронизируются на общей доске во вкладке «Игра».</p>
+                <div class="online-actions">
+                    <button id="online-create-button" type="button" onclick="createOnlineRoom()">Играть с другом · создать комнату</button>
+                    <input id="online-room-id" type="text" inputmode="text" autocomplete="off" placeholder="Код комнаты или ссылка" aria-label="Код комнаты или ссылка" />
+                    <button type="button" onclick="joinOnlineRoom()">Присоединиться</button>
+                    <button id="online-leave-button" type="button" onclick="leaveOnlineRoom()" hidden>Выйти из комнаты</button>
+                </div>
+                <div id="online-room-link-row" class="online-room-link-row" hidden>
+                    <input id="online-room-link" type="text" readonly aria-label="Ссылка для приглашения" />
+                    <button type="button" onclick="copyOnlineRoomLink()">Копировать ссылку</button>
+                </div>
+                <p id="online-room-status" class="online-room-status" aria-live="polite">Создайте комнату или введите ссылку приглашения.</p>
             </div>
         </div>
 
@@ -410,10 +463,9 @@
                 <div class="settings-group">
                     <label><strong>♛ Ваш рейтинг Elo:</strong></label>
                     <div class="elo-display">
-                        <div class="elo-rating-big" id="elo-rating">1200</div>
-                        <div class="elo-category" id="elo-category">Средний уровень</div>
+                        <div class="elo-rating-big" id="elo-rating">—</div>
+                        <div class="elo-category" id="elo-category">Войдите, чтобы увидеть рейтинг</div>
                     </div>
-                    <input type="range" id="elo-slider" min="800" max="3000" value="1200" onchange="updateElo()" style="width: 100%;" />
                     
                     <div class="elo-history-title">📈 История последних 10 игр:</div>
                     <div id="elo-history-list" class="elo-history-list"></div>
@@ -496,8 +548,18 @@
                 </div>
                 <div id="game-history"></div>
                 <div id="no-history" class="no-games">
-                    <p>📭 Никаких сохранённых партий. Сыграйте свою первую партию!</p>
+                    <p>📭 Войдите в аккаунт, чтобы загрузить историю партий с сервера.</p>
                 </div>
+                <section id="history-viewer" class="history-viewer" style="display:none;" aria-label="Просмотр партии">
+                    <h3 id="history-viewer-title">Просмотр партии</h3>
+                    <div class="history-viewer-board" id="history-viewer-board" aria-live="polite"></div>
+                    <div class="history-viewer-controls">
+                        <button type="button" onclick="stepHistory(-1)">← Назад</button>
+                        <span id="history-viewer-step">Начальная позиция</span>
+                        <button type="button" onclick="stepHistory(1)">Вперёд →</button>
+                        <button type="button" onclick="closeHistoryViewer()">Закрыть</button>
+                    </div>
+                </section>
                 <div style="margin-top: 20px; text-align: center;">
                     <button onclick="document.getElementById('history-file').click()">📥 Импортировать историю</button>
                     <button onclick="downloadHistory()">📤 Скачать всю историю</button>
@@ -560,7 +622,6 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/stockfish@10.0.2/src/stockfish.js"></script>
     <script src="script.js"></script>
 
     <script>
@@ -571,37 +632,19 @@
     document.addEventListener('DOMContentLoaded', () => {
         console.log("🎯 [INIT] Chess Master: Холодный запуск...");
 
-        // ФАЗА 1: ВОССТАНОВЛЕНИЕ СОСТОЯНИЯ ПОЛЬЗОВАТЕЛЯ
-        if (typeof checkAuth === 'function') {
-            checkAuth(); // Восстанавливает currentUser и вызывает updateUI()
-        } else {
-            console.warn("⚠️ checkAuth не найдена");
+        // Восстановление последней вкладки
+        const lastTab = new URLSearchParams(location.search).has('room')
+            ? 'online'
+            : (localStorage.getItem('currentTab') || 'landing');
+        const roomId = new URLSearchParams(location.search).get('room');
+        if (roomId && document.getElementById('online-room-id')) {
+            document.getElementById('online-room-id').value = roomId;
         }
-
-        // ФАЗА 2: ПРИМЕНЕНИЕ VIP-НАСТРОЕК
-        if (typeof checkPremiumSettings === 'function') {
-            checkPremiumSettings();
-        } else {
-            console.warn("⚠️ checkPremiumSettings не найдена");
-        }
-
-        // ФАЗА 3: ИНИЦИАЛИЗАЦИЯ ТЯЖЕЛЫХ КОМПОНЕНТОВ (Stockfish, UI)
-        // Stockfish инициализируется здесь ОДИН РАЗ
-        if (typeof initStockfish === 'function') {
-            initStockfish();
-        } else {
-            console.warn("⚠️ initStockfish не найдена");
-        }
-
-        // ФАЗА 4: ВОССТАНОВЛЕНИЕ ПОСЛЕДНЕЙ ВКЛАДКИ
-        const lastTab = localStorage.getItem('currentTab') || 'landing';
         if (typeof showTab === 'function') {
             showTab(lastTab);
-        } else {
-            console.warn("⚠️ showTab не найдена");
         }
 
-        // ФАЗА 5: УВЕДОМЛЕНИЕ О ГОТОВНОСТИ + СТАТУС АВТОРИЗАЦИИ
+        // Уведомление о сохранённой сессии
         const userData = localStorage.getItem('userData');
         if (userData) {
             try {
@@ -610,7 +653,7 @@
                 if (user.role === 'admin') {
                     welcomeMsg += ' 👑 [Администратор]';
                 }
-                if (user.is_premium) {
+                if (user.is_premium === true) {
                     welcomeMsg += ' 💎 [Premium активен]';
                 }
                 if (typeof showNotification === 'function') {

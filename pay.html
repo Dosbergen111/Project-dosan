@@ -3,90 +3,46 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Premium Access - Chess Master</title>
-    <style>
-        :root { --gold: #ffd700; --dark: #0a0a0a; --gray: #1a1a1a; }
-        body { background: var(--dark); color: white; font-family: 'Segoe UI', sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; }
-        .pay-card { background: var(--gray); border: 2px solid var(--gold); border-radius: 20px; padding: 40px; width: 100%; max-width: 400px; box-shadow: 0 0 30px rgba(255, 215, 0, 0.2); text-align: center; position: relative; overflow: hidden; }
-        .pay-card::before { content: ''; position: absolute; inset: 0; background: radial-gradient(circle at top left, rgba(255, 215, 0, 0.18), transparent 20%), radial-gradient(circle at bottom right, rgba(255, 255, 255, 0.06), transparent 18%); pointer-events: none; }
-        .badge { background: var(--gold); color: black; padding: 5px 15px; border-radius: 50px; font-weight: bold; font-size: 0.8em; text-transform: uppercase; }
-        h1 { margin: 15px 0; font-size: 2em; position: relative; z-index: 1; }
-        .price { font-size: 3.5em; font-weight: bold; color: var(--gold); margin: 10px 0; position: relative; z-index: 1; }
-        .price span { font-size: 0.4em; color: #888; }
-        .features { text-align: left; margin: 25px 0; padding: 0; list-style: none; position: relative; z-index: 1; }
-        .features li { margin: 12px 0; padding-left: 30px; position: relative; }
-        .features li::before { content: '✔'; position: absolute; left: 0; color: var(--gold); }
-        .input-group { margin-bottom: 15px; position: relative; z-index: 1; }
-        input { width: 100%; padding: 12px; background: #222; border: 1px solid #444; color: white; border-radius: 8px; box-sizing: border-box; }
-        .pay-btn { width: 100%; padding: 18px; background: linear-gradient(45deg, var(--gold), #ff8c00); border: none; border-radius: 10px; color: black; font-weight: bold; font-size: 1.1em; cursor: pointer; transition: 0.3s; }
-        .pay-btn:hover { transform: scale(1.02); box-shadow: 0 0 20px rgba(255, 215, 0, 0.4); }
-        .back-link { display: block; margin-top: 20px; color: #aaa; text-decoration: none; font-size: 0.9em; position: relative; z-index: 1; }
-    </style>
+    <title>Premium — Chess Master</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="theme.css">
 </head>
-<body>
-    <div class="pay-card">
-        <span class="badge">Limited Offer</span>
-        <h1>Premium</h1>
-        <div class="price">399 <span>KZT</span></div>
-        
-        <ul class="features">
-            <li>Бесконечная энергия ∞</li>
-            <li>Золотой статус и VIP бейдж</li>
-            <li>Анализ партий (Stockfish 10)</li>
-            <li>Отключение рекламы</li>
-        </ul>
-
-        <div id="card-fields">
-            <div class="input-group">
-                <input type="text" id="card-num" placeholder="0000 0000 0000 0000" maxlength="19">
+<body class="standalone-page">
+    <header class="site-header">
+        <h1>♔ Chess Master ♚</h1>
+        <nav class="site-nav" aria-label="Основные страницы">
+            <a href="chess.html">Игра</a>
+            <a href="admin.html" id="admin-nav-link" style="display:none;">Админка</a>
+            <a href="pay.html" aria-current="page">Premium</a>
+            <a href="checkout.html">Оформление</a>
+        </nav>
+    </header>
+    <main class="page-content payment-layout">
+        <section class="panel payment-card">
+            <span class="page-badge">Учебная страница</span>
+            <h2>Premium</h2>
+            <p class="payment-price">399 <small>₸</small></p>
+            <ul class="payment-features">
+                <li>Бесконечная энергия</li>
+                <li>Золотой VIP-бейдж</li>
+                <li>Инструменты анализа партий</li>
+                <li>Отключение рекламы</li>
+            </ul>
+            <div class="notice-box" role="note">
+                Это демонстрационная заглушка. Платёж не принимается, карта не требуется, Premium не активируется.
             </div>
-            <div style="display: flex; gap: 10px; position: relative; z-index: 1;">
-                <input type="text" placeholder="MM/YY" maxlength="5">
-                <input type="password" placeholder="CVC" maxlength="3">
+            <div class="page-actions">
+                <a class="button button-primary" href="checkout.html">Посмотреть учебное оформление</a>
+                <a class="button button-secondary" href="chess.html">Вернуться к игре</a>
             </div>
-            <button class="pay-btn" onclick="startPayment()">ПОДТВЕРДИТЬ ОПЛАТУ</button>
-        </div>
-        <a href="chess.html" class="back-link">🔙 Вернуться к игре</a>
-    </div>
-
+        </section>
+    </main>
     <script>
-        async function startPayment() {
-            const btn = document.querySelector('.pay-btn');
-            btn.textContent = "СВЯЗЬ С КАССИР-24...";
-            btn.disabled = true;
-
-            setTimeout(async () => {
-                const userData = JSON.parse(localStorage.getItem('userData'));
-                if (!userData) {
-                    alert("Ошибка: Зайди в аккаунт!");
-                    btn.textContent = "ПОДТВЕРДИТЬ ОПЛАТУ";
-                    btn.disabled = false;
-                    return;
-                }
-
-                try {
-                    const res = await fetch('/admin/toggle-premium', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({ id: userData.id, premiumStatus: true })
-                    });
-
-                    if (res.ok) {
-                        userData.is_premium = true;
-                        localStorage.setItem('userData', JSON.stringify(userData));
-                        alert("💎 Транзакция одобрена! Добро пожаловать в VIP.");
-                        window.location.href = 'chess.html';
-                        return;
-                    }
-
-                    alert("Ошибка: не удалось подтвердить покупку.");
-                } catch (e) {
-                    alert("Ошибка связи с сервером!");
-                }
-
-                btn.disabled = false;
-                btn.textContent = "ПОПРОБОВАТЬ СНОВА";
-            }, 2500);
+        try {
+            const user = JSON.parse(localStorage.getItem('userData') || 'null');
+            if (user && user.role === 'admin') document.getElementById('admin-nav-link').style.display = '';
+        } catch (error) {
+            console.warn('Не удалось восстановить роль для навигации:', error);
         }
     </script>
 </body>

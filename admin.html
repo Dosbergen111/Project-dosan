@@ -2,99 +2,177 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Панель управления - Chess Master</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель управления — Chess Master</title>
     <link rel="stylesheet" href="style.css">
-    <style>
-        .admin-container { padding: 20px; max-width: 1000px; margin: 0 auto; color: white; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #2a2a2a; }
-        th, td { padding: 12px; border: 1px solid #444; text-align: left; }
-        th { background: #1a1a1a; color: #00ff00; }
-        .btn-premium { background: #ff8c00; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px; margin-right: 5px; }
-        .btn-block { background: #ff4d4d; color: white; border: none; padding: 5px 10px; cursor: pointer; border-radius: 4px; }
-        .btn-unblock { background: #4CAF50; }
-        button:hover { opacity: 0.8; }
-    </style>
+    <link rel="stylesheet" href="theme.css">
 </head>
-<body>
-    <div class="admin-container">
-        <h1>⚙️ Управление игроками</h1>
-        <button onclick="location.href='chess.html'">🔙 Вернуться к игре</button>
-        
-        <table>
-            <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>Игрок</th>
-                    <th>Elo</th>
-                    <th>Энергия</th>
-                    <th>Роль</th>
-                    <th>Статус</th>
-                    <th>Действие</th>
-                </tr>
-            </thead>
-            <tbody id="users-list">
-                </tbody>
-        </table>
-    </div>
-
+<body class="standalone-page">
+    <header class="site-header">
+        <h1>♔ Chess Master ♚</h1>
+        <nav class="site-nav" aria-label="Основные страницы">
+            <a href="chess.html">Игра</a>
+            <a href="admin.html" id="admin-nav-link" aria-current="page" style="display:none;">Админка</a>
+            <a href="pay.html">Premium</a>
+            <a href="checkout.html">Оформление</a>
+        </nav>
+    </header>
+    <main class="admin-container page-content">
+        <section class="panel">
+            <h2>⚙️ Управление игроками</h2>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Игрок</th>
+                            <th>Elo</th>
+                            <th>Энергия</th>
+                            <th>Роль</th>
+                            <th>Статус</th>
+                            <th>Действие</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-list"></tbody>
+                </table>
+            </div>
+            <p class="page-note">Для просмотра и изменения данных войдите на странице игры с учётной записью администратора.</p>
+        </section>
+    </main>
     <script>
-        // 1. Загрузка пользователей
+        try {
+            const user = JSON.parse(localStorage.getItem('userData') || 'null');
+            if (user && user.role === 'admin') document.getElementById('admin-nav-link').style.display = '';
+        } catch (error) {
+            console.warn('Не удалось восстановить роль для навигации:', error);
+        }
+
+        function getAdminAuthHeaders() {
+            const user = JSON.parse(localStorage.getItem('userData') || 'null');
+            if (!user || user.role !== 'admin' || !user.sessionToken) {
+                throw new Error('Войдите на странице игры с учётной записью администратора.');
+            }
+            return { Authorization: `Bearer ${user.sessionToken}` };
+        }
+
         async function loadUsers() {
             try {
-                const res = await fetch('/admin/users');
+                const res = await fetch('/admin/users', { headers: getAdminAuthHeaders() });
+                if (!res.ok) {
+                    if (res.status === 401 || res.status === 403) {
+                        throw new Error('Нет доступа. Войдите с учётной записью администратора.');
+                    }
+                    throw new Error('Не удалось загрузить пользователей.');
+                }
                 const data = await res.json();
                 const tbody = document.getElementById('users-list');
-                tbody.innerHTML = '';
-
-                // Твой сервер шлет { users: [...] }
-                const users = data.users || data;
-
-                users.forEach(u => {
-                    tbody.innerHTML += `
-                        <tr>
-                            <td>${u.id}</td>
-                            <td>${u.username} ${u.is_premium ? '💎' : ''}</td>
-                            <td>${u.elo}</td>
-                            <td>${u.is_premium ? '∞' : u.energy}</td>
-                            <td>${u.role}</td>
-                            <td>${u.is_blocked ? '🔴 Забанен' : '🟢 Ок'}</td>
-                            <td>
-                                <button class="btn-premium" onclick="togglePremium(${u.id}, ${u.is_premium})">
-                                    ${u.is_premium ? 'Снять VIP' : 'Дать VIP'}
-                                </button>
-                                <button class="btn-block ${u.is_blocked ? 'btn-unblock' : ''}" 
-                                        onclick="toggleBlock(${u.id}, ${u.is_blocked})">
-                                    ${u.is_blocked ? 'Разбанить' : 'Забанить'}
-                                </button>
-                            </td>
-                        </tr>`;
+                tbody.replaceChildren();
+                (data.users || data).forEach(user => {
+                    const row = document.createElement('tr');
+                    const values = [
+                        user.id,
+                        `${user.username}${user.is_premium ? ' 💎' : ''}`,
+                        user.elo,
+                        user.is_premium ? '∞' : user.energy,
+                        user.role,
+                        user.is_blocked ? '🔴 Забанен' : '🟢 Ок'
+                    ];
+                    values.forEach((value, index) => {
+                        const cell = document.createElement('td');
+                        if (index === 2) {
+                            const eloInput = document.createElement('input');
+                            eloInput.type = 'number';
+                            eloInput.min = '100';
+                            eloInput.max = '3000';
+                            eloInput.step = '1';
+                            eloInput.value = String(user.elo ?? '');
+                            eloInput.setAttribute('aria-label', `Elo игрока ${user.username}`);
+                            cell.appendChild(eloInput);
+                        } else {
+                            cell.textContent = value ?? '';
+                        }
+                        row.appendChild(cell);
+                    });
+                    const actions = document.createElement('td');
+                    const eloButton = document.createElement('button');
+                    eloButton.className = 'btn-premium';
+                    eloButton.textContent = 'Сохранить Elo';
+                    eloButton.addEventListener('click', () => saveElo(user.id, row, eloButton));
+                    const premiumButton = document.createElement('button');
+                    premiumButton.className = 'btn-premium';
+                    premiumButton.textContent = user.is_premium ? 'Снять VIP' : 'Дать VIP';
+                    premiumButton.addEventListener('click', () => togglePremium(user.id, user.is_premium));
+                    const blockButton = document.createElement('button');
+                    blockButton.className = `btn-block${user.is_blocked ? ' btn-unblock' : ''}`;
+                    blockButton.textContent = user.is_blocked ? 'Разбанить' : 'Забанить';
+                    blockButton.addEventListener('click', () => toggleBlock(user.id, user.is_blocked));
+                    actions.append(eloButton, premiumButton, blockButton);
+                    row.appendChild(actions);
+                    tbody.appendChild(row);
                 });
-            } catch (err) {
-                console.error("Ошибка загрузки:", err);
+            } catch (error) {
+                const message = error.message || 'Не удалось загрузить список пользователей.';
+                if (!message.includes('администратор')) console.error('Ошибка загрузки пользователей:', error);
+                const row = document.createElement('tr');
+                const cell = document.createElement('td');
+                cell.colSpan = 7;
+                cell.textContent = message;
+                row.appendChild(cell);
+                document.getElementById('users-list').replaceChildren(row);
             }
         }
 
-        // 2. Управление VIP
-        async function togglePremium(id, currentStatus) {
-            await fetch('/admin/toggle-premium', {
+        async function sendAdminAction(url, payload) {
+            const response = await fetch(url, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, premiumStatus: !currentStatus })
+                headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
+                body: JSON.stringify(payload)
             });
-            loadUsers();
+            if (!response.ok) throw new Error('Действие не выполнено.');
+            await loadUsers();
         }
 
-        // 3. Управление Блокировкой
-        async function toggleBlock(id, currentStatus) {
-            await fetch('/admin/block', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ id, block: !currentStatus })
-            });
-            loadUsers();
+        async function saveElo(id, row, button) {
+            const input = row.querySelector('input[type="number"]');
+            const elo = Number(input.value);
+            if (!Number.isInteger(elo) || elo < 100 || elo > 3000) {
+                alert('Введите целый Elo от 100 до 3000.');
+                return;
+            }
+
+            button.disabled = true;
+            try {
+                const response = await fetch('/admin/update-elo', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getAdminAuthHeaders() },
+                    body: JSON.stringify({ id, elo })
+                });
+                const data = await response.json();
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || 'Не удалось сохранить Elo.');
+                }
+
+                input.value = String(data.user.elo);
+                row.cells[2].dataset.league = data.user.league;
+                button.textContent = 'Сохранено';
+                setTimeout(() => { button.textContent = 'Сохранить Elo'; }, 1200);
+            } catch (error) {
+                alert(error.message || 'Не удалось сохранить Elo.');
+            } finally {
+                button.disabled = false;
+            }
         }
 
-        // Автозапуск
+        function togglePremium(id, currentStatus) {
+            sendAdminAction('/admin/toggle-premium', { id, premiumStatus: !currentStatus })
+                .catch(error => alert(error.message));
+        }
+
+        function toggleBlock(id, currentStatus) {
+            sendAdminAction('/admin/block', { id, block: !currentStatus })
+                .catch(error => alert(error.message));
+        }
+
         document.addEventListener('DOMContentLoaded', loadUsers);
     </script>
 </body>
