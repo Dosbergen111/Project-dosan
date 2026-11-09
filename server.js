@@ -1,121 +1,97 @@
-const regenSQL = `
-    UPDATE Users 
-    SET energy = CASE 
-        WHEN energy + (DATEDIFF(MINUTE, last_energy_update, GETDATE()) / 30) > 5 THEN 5 
-        ELSE energy + (DATEDIFF(MINUTE, last_energy_update, GETDATE()) / 30) 
-    END,
-    last_energy_update = CASE 
-        WHEN energy + (DATEDIFF(MINUTE, last_energy_update, GETDATE()) / 30) >= 5 THEN GETDATE()
-        ELSE DATEADD(MINUTE, (DATEDIFF(MINUTE, last_energy_update, GETDATE()) / 30) * 30, last_energy_update)
-    END
-    WHERE username = @username AND energy < 5 AND DATEDIFF(MINUTE, last_energy_update, GETDATE()) >= 30
-`;
+// Chess Master — сервер на PostgreSQL (Neon).
+// Строка подключения берётся ТОЛЬКО из переменной окружения DATABASE_URL.
 const express = require('express');
 const cors = require('cors');
 const bcrypt = require('bcrypt');
-const sql = require('mssql');
+const path = require('path');
+const { Pool } = require('pg');
+
+if (!process.env.DATABASE_URL) {
+    console.error('❌ Не задана переменная DATABASE_URL (строка подключения из Neon).');
+    process.exit(1);
+}
+
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: { rejectUnauthorized: false },
+    max: 5,
+    idleTimeoutMillis: 30000,
+    connectionTimeoutMillis: 10000
+});
+pool.on('error', (err) => console.error('PG pool error:', err.message));
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-app.use(express.static('./'));  // Подавать статические файлы из текущей папки
 
-// Принудительно отправляем chess.html, если зашли по главному адресу
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/chess.html');
-});
+// Раздаём только нужные файлы сайта (раньше express.static('./') отдавал и server.js, и package.json).
+const PUBLIC_FILES = ['chess.html', 'admin.html', 'pay.html', 'checkout.html', 'script.js', 'style.css'];
+PUBLIC_FILES.forEach((f) => app.get('/' + f, (req, res) => res.sendFile(path.join(__dirname, f))));
+app.use('/images', express.static(path.join(__dirname, 'images')));
+app.use('/sounds', express.static(path.join(__dirname, 'sounds')));
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'chess.html')));
 
-const dbConfig = {
-    user: 'chess_admin', 
-    password: 'StrongPassword123!', 
-    server: 'DESKTOP-EG2R0QB', // Твое имя сервера из SSMS
-    database: 'ChessDB',
-    options: {
-        encrypt: false,
-        trustServerCertificate: true
-    }
-};
-// Проверка подключения к базе при старте
-sql.connect(dbConfig).then(pool => {
-    if (pool.connected) {
-        console.log("✅ СИСТЕМА: Соединение с ChessDB установлено успешно.");
-    }
-}).catch(err => {
-    console.log("❌ КРИТИЧЕСКАЯ ОШИБКА: База данных недоступна!");
-    console.error(err.message);
-});
+// ---- Регенерация энергии: +1 за каждые 30 минут, максимум 5 ----
+// Условие и расчёт одинаковые, вычисляются по last_energy_update, поэтому таймер не нужен.
+const MINUTES = `FLOOR(EXTRACT(EPOCH FROM (NOW() - last_energy_update)) / 60)`;
+const REGEN_SET = `
+    energy = LEAST(5, energy + (${MINUTES} / 30)::int),
+    last_energy_update = CASE
+        WHEN energy + (${MINUTES} / 30)::int >= 5 THEN NOW()
+        ELSE last_energy_update + ((${MINUTES} / 30)::int * 30) * INTERVAL '1 minute'
+    END`;
+const REGEN_WHERE = `energy < 5 AND ${MINUTES} >= 30`;
+
+async function regenEnergyForUser(username) {
+    await pool.query(`UPDATE users SET ${REGEN_SET} WHERE username = $1 AND ${REGEN_WHERE}`, [username]);
+}
+
+// ---- Регистрация ----
 app.post('/register', async (req, res) => {
     const { username, password } = req.body;
-
     if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required.' });
     }
-
     try {
-        await sql.connect(dbConfig);
-
-        const hashedPassword = await bcrypt.hash(password, 10);
-
-        const request = new sql.Request();
-        request.input('username', sql.NVarChar(50), username);
-        request.input('password_hash', sql.NVarChar(sql.MAX), hashedPassword);
-
-        const insertResult = await request.query(`
-            INSERT INTO Users (username, password_hash)
-            VALUES (@username, @password_hash);
-            SELECT SCOPE_IDENTITY() AS id;
-        `);
-
-        const userId = insertResult.recordset[0]?.id;
-        return res.status(201).json({ message: 'User registered successfully.', userId });
+        const hash = await bcrypt.hash(password, 10);
+        const r = await pool.query(
+            'INSERT INTO users (username, password_hash) VALUES ($1, $2) RETURNING id',
+            [username, hash]
+        );
+        return res.status(201).json({ message: 'User registered successfully.', userId: r.rows[0].id });
     } catch (error) {
-        console.error('Registration error:', error);
-
-        if (error.number === 2627 || (error.originalError && error.originalError.info && error.originalError.info.number === 2627)) {
+        if (error.code === '23505') {
             return res.status(409).json({ error: 'Username already exists.' });
         }
-
+        console.error('Registration error:', error.message);
         return res.status(500).json({ error: 'Registration failed.' });
-    } finally {
-        await sql.close();
     }
 });
 
+// ---- Вход ----
 app.post('/login', async (req, res) => {
     const { username, password } = req.body;
-
     if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required.' });
     }
-
     try {
-        await sql.connect(dbConfig);
-
-        const request = new sql.Request();
-        request.input('username', sql.NVarChar(50), username);
-
-        // ВАЖНО: Добавили role, is_blocked и is_premium в SELECT
-        const result = await request.query(`
-            SELECT id, username, password_hash, elo, energy, role, is_blocked, is_premium, last_energy_update
-            FROM Users
-            WHERE username = @username
-        `);
-
-        if (result.recordset.length === 0) {
+        await regenEnergyForUser(username);
+        const r = await pool.query(
+            `SELECT id, username, password_hash, elo, energy, role, is_blocked, is_premium, last_energy_update
+             FROM users WHERE username = $1`,
+            [username]
+        );
+        if (r.rows.length === 0) {
             return res.status(401).json({ error: 'User not found.' });
         }
-
-        const user = result.recordset[0];
-        const isPasswordValid = await bcrypt.compare(password, user.password_hash);
-
-        if (!isPasswordValid) {
+        const user = r.rows[0];
+        const ok = await bcrypt.compare(password, user.password_hash);
+        if (!ok) {
             return res.status(401).json({ error: 'Invalid password.' });
         }
-
         if (user.is_blocked) {
             return res.status(403).json({ error: 'Ваш аккаунт заблокирован администрацией.' });
         }
-
         return res.status(200).json({
             id: user.id,
             username: user.username,
@@ -125,367 +101,226 @@ app.post('/login', async (req, res) => {
             is_premium: user.is_premium,
             last_energy_update: user.last_energy_update
         });
-        // ------------------------------
-
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('Login error:', error.message);
         return res.status(500).json({ error: 'Login failed.' });
-    } finally {
-        await sql.close();
     }
 });
 
+// ---- История партий ----
 app.post('/api/save-game', async (req, res) => {
     const { userId, result, fen, moves } = req.body;
-
     if (!userId || !fen) {
         return res.status(400).json({ error: 'Данные не полные' });
     }
-
     try {
-        const pool = await sql.connect(dbConfig);
-        await pool.request()
-            .input('userId', sql.Int, userId)
-            .input('result', sql.NVarChar, result)
-            .input('fen', sql.Text, fen)
-            .input('moves', sql.NVarChar, moves)
-            .query(`INSERT INTO GameHistory (userId, result, fen, moves) VALUES (@userId, @result, @fen, @moves)`);
-
-        console.log(`[БАЗА] Партия сохранена для юзера ID: ${userId}`);
+        await pool.query(
+            'INSERT INTO gamehistory (userid, result, fen, moves) VALUES ($1, $2, $3, $4)',
+            [userId, result, fen, moves]
+        );
         res.json({ success: true, message: 'Партия в архиве' });
     } catch (err) {
-        console.error('Ошибка сохранения истории:', err);
-        res.status(500).send(err.message);
+        console.error('Ошибка сохранения истории:', err.message);
+        res.status(500).json({ error: 'Save failed' });
     }
 });
 
-// 1. Отправка сообщения в чат
+// ---- Общий чат ----
 app.post('/api/chat/send', async (req, res) => {
     const { userId, username, message } = req.body;
+    if (!userId || !message) {
+        return res.status(400).json({ error: 'userId and message required' });
+    }
     try {
-        const pool = await sql.connect(dbConfig);
-        await pool.request()
-            .input('userId', sql.Int, userId)
-            .input('username', sql.NVarChar, username)
-            .input('message', sql.NVarChar, message)
-            .query('INSERT INTO GlobalChat (userId, username, message) VALUES (@userId, @username, @message)');
+        await pool.query(
+            'INSERT INTO globalchat (userid, username, message) VALUES ($1, $2, $3)',
+            [userId, username, String(message).slice(0, 500)]
+        );
         res.json({ success: true });
     } catch (err) {
-        console.error('Chat send error:', err);
-        res.status(500).send(err.message);
-    } finally {
-        await sql.close();
+        console.error('Chat send error:', err.message);
+        res.status(500).json({ error: 'Send failed' });
     }
 });
 
-// 2. Получение истории чата (последние 50 сообщений)
 app.get('/api/chat/messages', async (req, res) => {
     try {
-        const pool = await sql.connect(dbConfig);
-        const result = await pool.request()
-            .query('SELECT TOP 50 * FROM GlobalChat ORDER BY sentAt DESC');
-        res.json(result.recordset.reverse()); // Переворачиваем, чтобы новые были внизу
+        const r = await pool.query(
+            `SELECT id, userid AS "userId", username, message, sentat AS "sentAt"
+             FROM globalchat ORDER BY sentat DESC LIMIT 50`
+        );
+        res.json(r.rows.reverse());
     } catch (err) {
-        console.error('Chat messages error:', err);
-        res.status(500).send(err.message);
-    } finally {
-        await sql.close();
+        console.error('Chat messages error:', err.message);
+        res.status(500).json({ error: 'Load failed' });
     }
 });
 
+// ---- Таблица лидеров ----
 app.get('/leaderboard', async (req, res) => {
     try {
-        await sql.connect(dbConfig);
-        const result = await sql.query('SELECT TOP 10 username, elo, is_premium FROM Users ORDER BY elo DESC, is_premium DESC');
-        return res.status(200).json({ leaderboard: result.recordset });
+        const r = await pool.query(
+            'SELECT username, elo, is_premium FROM users ORDER BY elo DESC, is_premium DESC LIMIT 10'
+        );
+        return res.status(200).json({ leaderboard: r.rows });
     } catch (error) {
-        console.error('Leaderboard error:', error);
+        console.error('Leaderboard error:', error.message);
         return res.status(500).json({ error: 'Failed to fetch leaderboard.' });
-    } finally {
-        await sql.close();
     }
 });
 
-
+// ---- Смена пароля ----
 app.post('/change-password', async (req, res) => {
     const { username, oldPassword, newPassword } = req.body;
-
     if (!username || !oldPassword || !newPassword) {
         return res.status(400).json({ error: 'Username, old password, and new password are required.' });
     }
-
     if (newPassword.length < 6) {
         return res.status(400).json({ error: 'New password must be at least 6 characters long.' });
     }
-
     try {
-        await sql.connect(dbConfig);
-
-        const request = new sql.Request();
-        request.input('username', sql.NVarChar(50), username);
-
-        const result = await request.query(`
-            SELECT password_hash FROM Users WHERE username = @username
-        `);
-
-        if (result.recordset.length === 0) {
+        const r = await pool.query('SELECT password_hash FROM users WHERE username = $1', [username]);
+        if (r.rows.length === 0) {
             return res.status(404).json({ error: 'User not found.' });
         }
-
-        const isOldPasswordValid = await bcrypt.compare(oldPassword, result.recordset[0].password_hash);
-
-        if (!isOldPasswordValid) {
+        const ok = await bcrypt.compare(oldPassword, r.rows[0].password_hash);
+        if (!ok) {
             return res.status(401).json({ error: 'Old password is incorrect.' });
         }
-
-        const hashedNewPassword = await bcrypt.hash(newPassword, 10);
-
-        const updateRequest = new sql.Request();
-        updateRequest.input('username', sql.NVarChar(50), username);
-        updateRequest.input('password_hash', sql.NVarChar(sql.MAX), hashedNewPassword);
-
-        await updateRequest.query(`
-            UPDATE Users SET password_hash = @password_hash WHERE username = @username
-        `);
-
+        const hash = await bcrypt.hash(newPassword, 10);
+        await pool.query('UPDATE users SET password_hash = $1 WHERE username = $2', [hash, username]);
         return res.status(200).json({ message: 'Password changed successfully.' });
     } catch (error) {
-        console.error('Change password error:', error);
+        console.error('Change password error:', error.message);
         return res.status(500).json({ error: 'Failed to change password.' });
-    } finally {
-        await sql.close();
     }
 });
 
-// Восстановление энергии каждые 30 минут
-setInterval(async () => {
+// ---- Админка (ВНИМАНИЕ: пока без проверки прав, как и в исходной версии) ----
+app.get('/admin/users', async (req, res) => {
     try {
-        await sql.connect(dbConfig);
-        await sql.query(`
-            UPDATE Users SET energy = CASE WHEN energy < 5 THEN energy + 1 ELSE energy END
-        `);
-        console.log('Energy restored for users with energy < 5');
-    } catch (error) {
-        console.error('Energy restoration error:', error);
-    } finally {
-        await sql.close();
+        await pool.query(`UPDATE users SET ${REGEN_SET} WHERE ${REGEN_WHERE}`);
+        const r = await pool.query(
+            'SELECT id, username, elo, energy, role, is_blocked, is_premium FROM users ORDER BY id'
+        );
+        res.status(200).json({ users: r.rows });
+    } catch (err) {
+        console.error('Ошибка админки:', err.message);
+        res.status(500).json({ error: 'Load failed' });
     }
-}, 30 * 60 * 1000); // 30 минут
+});
 
-const PORT = process.env.PORT || 3000;
-// 1. Получить список всех пользователей (только для админа)
-
-// 2. Заблокировать/Разблокировать пользователя
-// Маршрут для блокировки
 app.post('/admin/block', async (req, res) => {
-    const { id, block } = req.body; // Фронтенд шлет id и block
+    const { id, block } = req.body;
     try {
-        const pool = await sql.connect(dbConfig);
-        const request = new sql.Request();
-        request.input('id', sql.Int, id);
-        request.input('status', sql.Bit, block);
-        
-        await request.query('UPDATE Users SET is_blocked = @status WHERE id = @id');
+        await pool.query('UPDATE users SET is_blocked = $1 WHERE id = $2', [!!block, id]);
         res.status(200).json({ message: 'User status updated' });
     } catch (error) {
-        console.error("Ошибка блокировки:", error.message);
+        console.error('Ошибка блокировки:', error.message);
         res.status(500).json({ error: 'Update failed' });
     }
-    // sql.close() здесь НЕ НУЖЕН, он закрывает весь пул соединений
 });
-// Маршрут для VIP-статуса
+
 app.post('/admin/toggle-premium', async (req, res) => {
-    const { id, premiumStatus } = req.body; // Фронтенд шлет id и premiumStatus
+    const { id, premiumStatus } = req.body;
     try {
-        const pool = await sql.connect(dbConfig);
-        const request = new sql.Request();
-        request.input('id', sql.Int, id);
-        request.input('status', sql.Bit, premiumStatus);
-        
-        await request.query('UPDATE Users SET is_premium = @status WHERE id = @id');
+        await pool.query('UPDATE users SET is_premium = $1 WHERE id = $2', [!!premiumStatus, id]);
         res.status(200).json({ message: 'Premium status updated' });
     } catch (error) {
-        console.error("Ошибка премиума:", error.message);
+        console.error('Ошибка премиума:', error.message);
         res.status(500).json({ error: 'Update failed' });
     }
 });
-// 3. Изменить Elo (например, для тестов или наград)
+
 app.post('/admin/update-elo', async (req, res) => {
     const { userId, newElo } = req.body;
     try {
-        await sql.connect(dbConfig);
-        const request = new sql.Request();
-        request.input('id', sql.Int, userId);
-        request.input('elo', sql.Int, newElo);
-        
-        await request.query('UPDATE Users SET elo = @elo WHERE id = @id');
+        await pool.query('UPDATE users SET elo = $1 WHERE id = $2', [newElo, userId]);
         res.status(200).json({ message: 'Elo updated' });
     } catch (error) {
         res.status(500).json({ error: 'Elo update failed' });
-    } finally {
-        await sql.close();
     }
 });
 
-// Получение списка всех игроков (только для админа)
-app.get('/admin/users', async (req, res) => {
-    try {
-        const pool = await sql.connect(dbConfig);
-        
-        // 1. Регенерация (оставляем твой код, он верный)
-        await pool.request().query(`
-            UPDATE Users 
-            SET energy = CASE 
-                WHEN energy + (DATEDIFF(MINUTE, last_energy_update, GETDATE()) / 30) > 5 THEN 5 
-                ELSE energy + (DATEDIFF(MINUTE, last_energy_update, GETDATE()) / 30) 
-            END,
-            last_energy_update = CASE 
-                WHEN energy + (DATEDIFF(MINUTE, last_energy_update, GETDATE()) / 30) >= 5 THEN GETDATE()
-                ELSE DATEADD(MINUTE, (DATEDIFF(MINUTE, last_energy_update, GETDATE()) / 30) * 30, last_energy_update)
-            END
-            WHERE energy < 5 AND DATEDIFF(MINUTE, last_energy_update, GETDATE()) >= 30
-        `);
-
-        // 2. Получаем список пользователей + ДОБАВИЛИ is_premium
-        const result = await pool.request().query(`
-            SELECT id, username, elo, energy, role, is_blocked, is_premium 
-            FROM Users
-        `);
-        
-        console.log(`[DEBUG] Данные загружены для ${result.recordset.length} юзеров.`);
-
-        // 3. Отправляем (теперь объект содержит флаг премиума)
-        res.status(200).json({ 
-            users: result.recordset 
-        });
-
-    } catch (err) {
-        console.error("❌ ОШИБКА АДМИНКИ:", err.message);
-        res.status(500).json({ error: err.message });
-    }
-});
+// ---- Энергия ----
 app.post('/api/consume-energy', async (req, res) => {
     const { userId, amount } = req.body;
     try {
-        let pool = await sql.connect(dbConfig);
-        
-        // Сначала проверяем, хватает ли энергии
-        let userResult = await pool.request()
-            .input('id', sql.Int, userId)
-            .query('SELECT energy FROM Users WHERE id = @id');
-        
-        if (userResult.recordset[0].energy < amount) {
+        const r = await pool.query(
+            'UPDATE users SET energy = energy - $2 WHERE id = $1 AND energy >= $2 RETURNING energy',
+            [userId, amount]
+        );
+        if (r.rows.length === 0) {
             return res.status(400).json({ success: false, message: 'Недостаточно энергии' });
         }
-
-        // Вычитаем энергию
-        let updateResult = await pool.request()
-            .input('id', sql.Int, userId)
-            .input('amount', sql.Int, amount)
-            .query('UPDATE Users SET energy = energy - @amount OUTPUT inserted.energy WHERE id = @id');
-
-        res.json({ success: true, newEnergy: updateResult.recordset[0].energy });
+        res.json({ success: true, newEnergy: r.rows[0].energy });
     } catch (err) {
-        res.status(500).json({ success: false, error: err.message });
+        console.error('consume-energy error:', err.message);
+        res.status(500).json({ success: false, error: 'Database error' });
     }
 });
-// ВСТАВЬ ЭТО В SERVER.JS
+
 app.post('/use-energy', async (req, res) => {
     const { username } = req.body;
-    const amount = 1;
-
     if (!username) {
         return res.status(400).json({ error: 'Username is required.' });
     }
-
     try {
-        let pool = await sql.connect(dbConfig);
-
-        // 1. Проверяем статус пользователя (Premium или нет)
-        const userStatus = await pool.request()
-            .input('user', sql.NVarChar, username)
-            .query('SELECT is_premium, energy FROM Users WHERE username = @user');
-
-        if (userStatus.recordset.length === 0) {
+        await regenEnergyForUser(username);
+        const s = await pool.query('SELECT is_premium, energy FROM users WHERE username = $1', [username]);
+        if (s.rows.length === 0) {
             return res.status(404).json({ error: 'User not found.' });
         }
-
-        const user = userStatus.recordset[0];
-
-        // 2. ЕСЛИ ПРЕМИУМ: Энергию не трогаем, просто говорим "OK"
-        if (user.is_premium) {
-            return res.json({ energy: user.energy, isPremium: true });
+        if (s.rows[0].is_premium) {
+            return res.json({ energy: s.rows[0].energy, isPremium: true });
         }
-
-        // 3. ДЛЯ ОБЫЧНЫХ: Списываем 1 ед. и сразу получаем новый остаток через OUTPUT
-        let updateResult = await pool.request()
-            .input('user', sql.NVarChar, username)
-            .input('amt', sql.Int, amount)
-            .query(`
-                UPDATE Users 
-                SET energy = energy - @amt 
-                OUTPUT inserted.energy 
-                WHERE username = @user AND energy >= @amt
-            `);
-
-        if (updateResult.recordset.length === 0) {
+        const u = await pool.query(
+            'UPDATE users SET energy = energy - 1 WHERE username = $1 AND energy >= 1 RETURNING energy',
+            [username]
+        );
+        if (u.rows.length === 0) {
             return res.status(400).json({ error: 'Not enough energy.' });
         }
-
-        // Возвращаем обновленное значение
-        res.json({ 
-            energy: updateResult.recordset[0].energy, 
-            isPremium: false 
-        });
-
+        res.json({ energy: u.rows[0].energy, isPremium: false });
     } catch (err) {
-        console.error("❌ КРИТИЧЕСКАЯ ОШИБКА ЭНЕРГИИ:", err.message);
+        console.error('use-energy error:', err.message);
         res.status(500).json({ error: 'Database error' });
     }
 });
-// Этот SQL-запрос — "сердце" твоей регенерации. 
-// Он работает, даже если юзер был оффлайн год.
 
-// ПРИМЕР: Вставляем в роут логина или получения профиля
 app.post('/api/login', async (req, res) => {
     const { username } = req.body;
     try {
-        let pool = await sql.connect(dbConfig);
-        
-        // 1. Сначала "будим" регенерацию для этого юзера
-        await pool.request()
-            .input('username', sql.NVarChar, username)
-            .query(regenSQL);
-
-        // 2. А теперь отдаем данные (они уже будут обновлены!)
-        let result = await pool.request()
-            .input('username', sql.NVarChar, username)
-            .query('SELECT * FROM Users WHERE username = @username');
-
-        res.json(result.recordset[0]);
+        await regenEnergyForUser(username);
+        const r = await pool.query(
+            'SELECT id, username, elo, energy, role, is_blocked, is_premium, last_energy_update FROM users WHERE username = $1',
+            [username]
+        );
+        res.json(r.rows[0]);
     } catch (err) {
-        res.status(500).send(err.message);
+        console.error('api/login error:', err.message);
+        res.status(500).json({ error: 'Database error' });
     }
 });
 
+// ---- Премиум (ДЕМО: платёж не проверяется, как и в исходной версии) ----
 app.post('/api/buy-premium', async (req, res) => {
-    const { userId, username } = req.body;
+    const { userId } = req.body;
     if (!userId) return res.status(400).json({ error: 'userId required' });
     try {
-        await sql.connect(dbConfig);
-        const r = new sql.Request();
-        r.input('id', sql.Int, userId);
-        r.input('premium', sql.Bit, 1);
-        await r.query('UPDATE Users SET is_premium = @premium WHERE id = @id');
-        const result = await r.query('SELECT id, username, elo, is_premium FROM Users WHERE id = @id');
-        res.json({ success: true, user: result.recordset[0] });
+        const r = await pool.query(
+            'UPDATE users SET is_premium = TRUE WHERE id = $1 RETURNING id, username, elo, is_premium',
+            [userId]
+        );
+        res.json({ success: true, user: r.rows[0] });
     } catch (err) {
-        res.status(500).json({ error: err.message });
-    } finally {
-        await sql.close();
+        console.error('buy-premium error:', err.message);
+        res.status(500).json({ error: 'Database error' });
     }
 });
 
-app.listen(PORT, () => {
-    console.log('Server is running on http://localhost:' + PORT);
-});
+const PORT = process.env.PORT || 3000;
+pool.query('SELECT 1')
+    .then(() => console.log('✅ Соединение с Neon установлено.'))
+    .catch((err) => console.error('❌ База недоступна:', err.message));
+app.listen(PORT, () => console.log('Server is running on http://localhost:' + PORT));

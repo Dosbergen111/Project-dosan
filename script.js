@@ -972,6 +972,7 @@ function getKingMoves(row, col, color) {
 
 function isSquareAttacked(row, col, color) {
     const opponent = color === 'white' ? 'black' : 'white';
+        if (!board || board.length < 8) return false;
     for (let r = 0; r < 8; r++) {
         for (let c = 0; c < 8; c++) {
             const piece = board[r][c];

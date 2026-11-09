@@ -1,8 +1,14 @@
 {
+  "name": "chess-master",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "express": "^5.2.1",
-    "mssql": "^12.2.1"
+    "pg": "^8.13.0"
   }
 }
