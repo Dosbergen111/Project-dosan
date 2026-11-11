@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
-type Account = { id: number; username: string; sessionToken: string };
+type Account = { id: number; username: string };
 type ChatMessage = {
   id: number;
   userId: number;
@@ -76,7 +76,6 @@ export default function ChatPanel({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${account.sessionToken}`,
         },
         body: JSON.stringify({
           userId: account.id,

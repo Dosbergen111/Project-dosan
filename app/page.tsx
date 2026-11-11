@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import ChatPanel from "@/components/ChatPanel";
 import ChangePasswordForm from "@/components/ChangePasswordForm";
@@ -80,21 +80,6 @@ function resultFromOutcome(
   return state.turn === playerColor ? "loss" : "win";
 }
 
-function getPreferredTheme(): boolean {
-  const storedTheme = localStorage.getItem("preferredTheme") ?? localStorage.getItem("chessTheme");
-  return storedTheme === "light";
-}
-
-function subscribePreferredTheme(onChange: () => void): () => void {
-  const listener = () => onChange();
-  window.addEventListener("storage", listener);
-  window.addEventListener("preferred-theme-change", listener);
-  return () => {
-    window.removeEventListener("storage", listener);
-    window.removeEventListener("preferred-theme-change", listener);
-  };
-}
-
 export default function Home() {
   const [game, setGame] = useState<GameState>(() => createInitialState());
   const [past, setPast] = useState<{ game: GameState; moves: string[] }[]>([]);
@@ -124,7 +109,7 @@ export default function Home() {
   const [historyReplay, setHistoryReplay] = useState<HistoryReplay | null>(null);
   const [leaderboardRefresh, setLeaderboardRefresh] = useState(0);
   const [boardStyle, setBoardStyle] = useState("default");
-  const lightTheme = useSyncExternalStore(subscribePreferredTheme, getPreferredTheme, () => false);
+  const [lightTheme, setLightTheme] = useState(false);
   const [coordinatesShown, setCoordinatesShown] = useState(true);
   const [materialShown, setMaterialShown] = useState(true);
   const [fenInput, setFenInput] = useState("");
@@ -171,8 +156,7 @@ export default function Home() {
   }, [lightTheme]);
 
   function changeTheme(isLightTheme: boolean) {
-    localStorage.setItem("preferredTheme", isLightTheme ? "light" : "dark");
-    window.dispatchEvent(new Event("preferred-theme-change"));
+    setLightTheme(isLightTheme);
   }
 
   useEffect(() => {
@@ -232,10 +216,7 @@ export default function Home() {
 
     void fetch("/api/save-game", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${account.sessionToken}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         result: gameResult,
         fen: stateToFen(game),
@@ -291,9 +272,7 @@ export default function Home() {
           setPanelMessage(error instanceof Error ? error.message : "Ошибка загрузки лидеров.");
         });
     } else if (activeTab === "history" && account) {
-      void fetch("/api/history", {
-        headers: { Authorization: `Bearer ${account.sessionToken}` },
-      })
+      void fetch("/api/history")
         .then(async (response) => {
           const data = (await response.json()) as ApiError & { games?: HistoryEntry[] };
           if (!response.ok) throw new Error(getErrorMessage(data, response.status));
@@ -326,8 +305,6 @@ export default function Home() {
         setPassword("");
         setMessage("Регистрация прошла успешно. Теперь войдите.");
       } else {
-        localStorage.setItem("sessionToken", data.sessionToken);
-        localStorage.setItem("userId", String(data.id));
         setAccount(data);
         resetLocalGame(data.id);
         setPassword("");
@@ -347,7 +324,6 @@ export default function Home() {
     try {
       const response = await fetch("/api/logout", {
         method: "POST",
-        headers: { Authorization: `Bearer ${account.sessionToken}` },
       });
       const data = (await response.json()) as ApiError;
       if (!response.ok) throw new Error(getErrorMessage(data, response.status));

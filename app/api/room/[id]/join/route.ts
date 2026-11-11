@@ -1,4 +1,4 @@
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { pool } from "@/lib/db";
 import { getRoom, joinRoom, roomState } from "@/lib/rooms";
 
@@ -10,7 +10,7 @@ export async function POST(
   const room = getRoom(id);
   if (!room) return Response.json({ error: "Room not found." }, { status: 404 });
 
-  const session = getSessionFromRequest(request);
+  const session = await getSession();
   let username = "Гость";
   if (session) {
     try {

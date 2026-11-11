@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { cookies } from "next/headers";
 import { pool } from "@/lib/db";
 
 type Session = {
@@ -9,6 +10,7 @@ type Session = {
 export const SESSION_TTL_SECONDS = 12 * 60 * 60;
 const SESSION_TTL_MS = SESSION_TTL_SECONDS * 1000;
 export const SESSION_COOKIE_NAME = "session";
+export const USER_ID_COOKIE_NAME = "userId";
 
 function sessionSecret(): string {
   const secret = process.env.SESSION_SECRET ?? process.env.DATABASE_URL;
@@ -20,29 +22,15 @@ function sign(payload: string): string {
   return createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
 }
 
-function sessionTokenFromRequest(request: Request): string | null {
-  const authorization = request.headers.get("authorization");
-  const bearer = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
-  if (bearer) return bearer;
-
-  const cookie = request.headers.get("cookie");
-  const value = cookie
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${SESSION_COOKIE_NAME}=`))
-    ?.slice(SESSION_COOKIE_NAME.length + 1);
-  return value || null;
-}
-
-export function createSessionToken(userId: number): string {
+export function createSessionCookieValue(userId: number): string {
   const payload = Buffer.from(
     `${userId}.${Date.now() + SESSION_TTL_MS}`,
   ).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
 
-export function getSessionFromRequest(request: Request): Session | null {
-  const token = sessionTokenFromRequest(request);
+export async function getSession(): Promise<Session | null> {
+  const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
 
   const [payload, signature, extra] = token.split(".");
@@ -82,8 +70,8 @@ export function getSessionFromRequest(request: Request): Session | null {
   return { userId, expiresAt };
 }
 
-export async function requireAdmin(request: Request): Promise<Session | Response> {
-  const session = getSessionFromRequest(request);
+export async function requireAdmin(): Promise<Session | Response> {
+  const session = await getSession();
   if (!session) {
     return Response.json({ error: "Administrator sign-in required." }, { status: 401 });
   }

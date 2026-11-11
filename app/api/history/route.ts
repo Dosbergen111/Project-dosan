@@ -1,8 +1,8 @@
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { pool } from "@/lib/db";
 
-export async function GET(request: Request) {
-  const session = getSessionFromRequest(request);
+export async function GET() {
+  const session = await getSession();
   if (!session) {
     return Response.json({ error: "Sign-in required to view game history." }, { status: 401 });
   }

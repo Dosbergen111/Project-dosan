@@ -1,4 +1,4 @@
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { pool } from "@/lib/db";
 import { leagueForElo } from "@/lib/elo";
 import { getRoom, roomPlayer, roomState } from "@/lib/rooms";
@@ -26,7 +26,7 @@ export async function POST(
   const player = roomPlayer(room, token);
   if (!player) return Response.json({ error: "Invalid room token." }, { status: 403 });
   if (!room.black) return Response.json({ error: "Waiting for the second player." }, { status: 409 });
-  const session = getSessionFromRequest(request);
+  const session = await getSession();
   if (room.finished) {
     const savedProfile = session ? room.profiles[session.userId] : undefined;
     return Response.json({

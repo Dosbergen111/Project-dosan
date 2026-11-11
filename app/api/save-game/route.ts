@@ -1,4 +1,4 @@
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { ensureDailyMatchesTable } from "@/lib/daily-match";
 import { pool } from "@/lib/db";
 import { leagueForElo } from "@/lib/elo";
@@ -13,7 +13,7 @@ function botEloForDifficulty(level: number): number | null {
 }
 
 export async function POST(request: Request) {
-  const session = getSessionFromRequest(request);
+  const session = await getSession();
   if (!session) {
     return Response.json({ error: "Sign-in required to save a game." }, { status: 401 });
   }

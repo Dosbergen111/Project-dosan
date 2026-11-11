@@ -18,18 +18,15 @@ type AdminUser = {
 type UserResponse = { users?: AdminUser[]; error?: string };
 
 export default function AdminPage() {
-  const { account, refreshProfile } = useAuth();
+  const { account, isSessionLoading, refreshProfile } = useAuth();
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [eloValues, setEloValues] = useState<Record<number, string>>({});
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(true);
 
-  const loadUsers = useCallback(async (token: string) => {
-    const response = await fetch("/api/admin/users", {
-      headers: { Authorization: `Bearer ${token}` },
-      cache: "no-store",
-    });
+  const loadUsers = useCallback(async () => {
+    const response = await fetch("/api/admin/users", { cache: "no-store" });
     const data = (await response.json()) as UserResponse;
     if (!response.ok) throw new Error(data.error ?? "Не удалось загрузить пользователей.");
     const nextUsers = data.users ?? [];
@@ -40,8 +37,8 @@ export default function AdminPage() {
   useEffect(() => {
     let active = true;
     const initialize = async () => {
-      const token = localStorage.getItem("sessionToken");
-      if (!token) {
+      if (isSessionLoading) return;
+      if (!account) {
         if (active) {
           setError("Войдите на странице игры с учётной записью администратора.");
           setBusy(false);
@@ -49,7 +46,7 @@ export default function AdminPage() {
         return;
       }
       try {
-        if (active) await loadUsers(token);
+        if (active) await loadUsers();
       } catch (cause) {
         if (active) setError(cause instanceof Error ? cause.message : "Не удалось открыть админку.");
       } finally {
@@ -60,32 +57,24 @@ export default function AdminPage() {
     return () => {
       active = false;
     };
-  }, [loadUsers]);
+  }, [account, isSessionLoading, loadUsers]);
 
   async function action(
     endpoint: string,
     payload: Record<string, unknown>,
     successMessage: string,
   ) {
-    const token = localStorage.getItem("sessionToken");
-    if (!token) {
-      setError("Сессия истекла. Войдите снова.");
-      return;
-    }
     setError("");
     setMessage("");
     try {
       const response = await fetch(`/api/admin/${endpoint}`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
       const data = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Действие не выполнено.");
-      await loadUsers(token);
+      await loadUsers();
       if (endpoint === "toggle-premium" && account?.id === Number(payload.id)) {
         try {
           await refreshProfile();

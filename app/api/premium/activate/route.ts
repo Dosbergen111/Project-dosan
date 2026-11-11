@@ -1,10 +1,10 @@
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { pool } from "@/lib/db";
 import { leagueForElo } from "@/lib/elo";
 import { regenerateEnergy } from "@/lib/energy";
 
-export async function POST(request: Request) {
-  const session = getSessionFromRequest(request);
+export async function POST() {
+  const session = await getSession();
   if (!session) {
     return Response.json({ error: "Войдите, чтобы активировать Premium." }, { status: 401 });
   }

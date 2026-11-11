@@ -1,10 +1,10 @@
 import bcrypt from "bcryptjs";
 import { NextResponse } from "next/server";
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { pool } from "@/lib/db";
 
 export async function POST(request: Request) {
-  const session = getSessionFromRequest(request);
+  const session = await getSession();
   if (!session) {
     return NextResponse.json({ error: "Sign-in required." }, { status: 401 });
   }

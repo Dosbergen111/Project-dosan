@@ -2,7 +2,7 @@ import { requireAdmin } from "@/lib/auth";
 import { pool } from "@/lib/db";
 
 export async function POST(request: Request) {
-  const admin = await requireAdmin(request);
+  const admin = await requireAdmin();
   if (admin instanceof Response) return admin;
   let body: unknown;
   try {

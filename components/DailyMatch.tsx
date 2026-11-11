@@ -66,13 +66,11 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
     let active = true;
     const date = utcDate();
     const userId = account.id;
-    const sessionToken = account.sessionToken;
     const storageKey = `chessDailyMatch:${userId}:${date}`;
 
     async function loadMatch() {
       try {
         const response = await fetch("/api/daily-match", {
-          headers: { Authorization: `Bearer ${sessionToken}` },
           cache: "no-store",
         });
         const data = (await response.json()) as {
@@ -179,10 +177,7 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
 
     void fetch("/api/save-game", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${account.sessionToken}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         result: gameResult,
         fen: stateToFen(game),
@@ -200,7 +195,6 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
         if (!response.ok) {
           if (response.status === 409) {
             const statusResponse = await fetch("/api/daily-match", {
-              headers: { Authorization: `Bearer ${account.sessionToken}` },
               cache: "no-store",
             });
             const status = (await statusResponse.json()) as { match?: MatchResult | null; error?: string };

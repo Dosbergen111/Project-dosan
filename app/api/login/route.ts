@@ -1,9 +1,10 @@
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import {
-  createSessionToken,
+  createSessionCookieValue,
   SESSION_COOKIE_NAME,
   SESSION_TTL_SECONDS,
+  USER_ID_COOKIE_NAME,
 } from "@/lib/auth";
 import { pool } from "@/lib/db";
 import { leagueForElo } from "@/lib/elo";
@@ -66,15 +67,17 @@ export async function POST(request: Request) {
     );
 
     console.log("User logged in successfully:", { userId: user.id, username: user.username });
-    const sessionToken = createSessionToken(user.id);
+    const session = createSessionCookieValue(user.id);
     const cookieStore = await cookies();
-    cookieStore.set(SESSION_COOKIE_NAME, sessionToken, {
+    const cookieOptions = {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: true,
       sameSite: "lax",
       path: "/",
       maxAge: SESSION_TTL_SECONDS,
-    });
+    } as const;
+    cookieStore.set(SESSION_COOKIE_NAME, session, cookieOptions);
+    cookieStore.set(USER_ID_COOKIE_NAME, String(user.id), cookieOptions);
     return Response.json({
       id: user.id,
       username: user.username,
@@ -83,7 +86,6 @@ export async function POST(request: Request) {
       role: user.role,
       is_premium: user.is_premium,
       league: leagueForElo(user.elo),
-      sessionToken,
     });
   } catch (error) {
     console.error("Login error:", error);

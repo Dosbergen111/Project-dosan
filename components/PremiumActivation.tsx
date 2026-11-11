@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { useAuth, type Account } from "@/components/AuthProvider";
 
-type ProfileResponse = Omit<Account, "sessionToken"> & { error?: string };
+type ProfileResponse = Account & { error?: string };
 
 export default function PremiumActivation() {
   const { account, isSessionLoading, setAccount } = useAuth();
@@ -18,11 +18,10 @@ export default function PremiumActivation() {
     try {
       const response = await fetch("/api/premium/activate", {
         method: "POST",
-        headers: { Authorization: `Bearer ${account.sessionToken}` },
       });
       const data = (await response.json()) as ProfileResponse;
       if (!response.ok) throw new Error(data.error ?? "Не удалось активировать Premium.");
-      setAccount({ ...data, sessionToken: account.sessionToken });
+      setAccount(data);
       setMessage("Premium активирован. Списаний нет.");
     } catch (error) {
       console.error("Premium demo activation failed:", error);

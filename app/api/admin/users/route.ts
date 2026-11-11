@@ -1,8 +1,8 @@
 import { requireAdmin } from "@/lib/auth";
 import { pool } from "@/lib/db";
 
-export async function GET(request: Request) {
-  const admin = await requireAdmin(request);
+export async function GET() {
+  const admin = await requireAdmin();
   if (admin instanceof Response) return admin;
 
   try {

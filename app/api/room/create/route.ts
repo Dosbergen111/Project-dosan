@@ -1,9 +1,9 @@
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { pool } from "@/lib/db";
 import { createRoom, roomState } from "@/lib/rooms";
 
-export async function POST(request: Request) {
-  const session = getSessionFromRequest(request);
+export async function POST() {
+  const session = await getSession();
   let username = "Гость";
   if (session) {
     try {

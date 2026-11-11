@@ -1,21 +1,21 @@
-import { getSessionFromRequest } from "@/lib/auth";
+import { cookies } from "next/headers";
+import { getSession, USER_ID_COOKIE_NAME } from "@/lib/auth";
 import { pool } from "@/lib/db";
 import { leagueForElo } from "@/lib/elo";
 import { regenerateEnergy } from "@/lib/energy";
 
-export async function GET(request: Request) {
-  const session = getSessionFromRequest(request);
-  if (!session) {
-    return Response.json({ error: "Sign-in required to view profile." }, { status: 401 });
-  }
-  const userIdValue = new URL(request.url).searchParams.get("userId");
+export async function GET() {
+  const session = await getSession();
+  const userIdValue = (await cookies()).get(USER_ID_COOKIE_NAME)?.value;
   const userId = Number(userIdValue);
-
-  if (!Number.isSafeInteger(userId) || userId < 1) {
-    return Response.json({ error: "Invalid user." }, { status: 400 });
-  }
-  if (userId !== session.userId) {
-    return Response.json({ error: "Cannot view another user's profile." }, { status: 403 });
+  if (
+    !session ||
+    !userIdValue ||
+    !Number.isSafeInteger(userId) ||
+    userId < 1 ||
+    userId !== session.userId
+  ) {
+    return Response.json({ error: "Sign-in required to view profile." }, { status: 401 });
   }
 
   try {

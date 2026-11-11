@@ -10,7 +10,6 @@ import type { ChessMove, PieceColor, Square } from "@/lib/chess/types";
 type Account = {
   id: number;
   username: string;
-  sessionToken: string;
   elo: number;
   league: string;
 };
@@ -28,10 +27,6 @@ type RoomState = {
   moves: string[];
   players: { white: PlayerStatus; black: PlayerStatus };
 };
-function headers(account: Account | null): HeadersInit {
-  return account ? { Authorization: `Bearer ${account.sessionToken}` } : {};
-}
-
 export default function OnlinePanel({
   account,
   onProfile,
@@ -111,7 +106,7 @@ export default function OnlinePanel({
 
     const response = await fetch(`/api/room/${encodeURIComponent(id)}/join`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...headers(account) },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ userId: account?.id, username: account?.username }),
     });
     const data = await readResponse<{
@@ -156,8 +151,8 @@ export default function OnlinePanel({
           acceptRoomState(data.state);
           if (data.state.finished && account) {
             const profileResponse = await fetch(
-              `/api/profile?userId=${account.id}`,
-              { headers: headers(account), cache: "no-store" },
+              "/api/profile",
+              { cache: "no-store" },
             );
             const profile = await readResponse<{
               elo: number;
@@ -184,7 +179,7 @@ export default function OnlinePanel({
     try {
       const response = await fetch(`/api/room/${encodeURIComponent(roomId)}/finish`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...headers(account) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ playerToken, result }),
       });
       const data = await readResponse<{
@@ -207,7 +202,7 @@ export default function OnlinePanel({
     } finally {
       setBusy(false);
     }
-  }, [account, acceptRoomState, busy, onProfile, playerToken, roomId, status]);
+  }, [acceptRoomState, busy, onProfile, playerToken, roomId, status]);
 
   useEffect(() => {
     if (!room || !game || !room.started || room.finished || !room.winner || busy) return;
@@ -226,7 +221,7 @@ export default function OnlinePanel({
     try {
       const response = await fetch("/api/room/create", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...headers(account) },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: account?.id, username: account?.username }),
       });
       const data = await readResponse<{

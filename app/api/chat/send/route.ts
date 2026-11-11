@@ -1,8 +1,8 @@
-import { getSessionFromRequest } from "@/lib/auth";
+import { getSession } from "@/lib/auth";
 import { pool } from "@/lib/db";
 
 export async function POST(request: Request) {
-  const session = getSessionFromRequest(request);
+  const session = await getSession();
   if (!session) {
     return Response.json({ error: "Sign in to send chat messages." }, { status: 401 });
   }
