@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import ChatPanel from "@/components/ChatPanel";
+import ChangePasswordForm from "@/components/ChangePasswordForm";
 import { useAuth, type Account } from "@/components/AuthProvider";
 import ChessBoard from "@/components/ChessBoard";
 import DailyMatch from "@/components/DailyMatch";
@@ -1117,6 +1118,12 @@ export default function Home() {
                 <div className="elo-category">{account?.league ?? "Войдите, чтобы увидеть рейтинг"}</div>
               </div>
             </div>
+            {account && (
+              <div className="settings-group">
+                <h3>Смена пароля</h3>
+                <ChangePasswordForm />
+              </div>
+            )}
           </div>
         </section>
 
