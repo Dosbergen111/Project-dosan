@@ -60,6 +60,7 @@ export async function POST(request: Request) {
       [user.id],
     );
 
+    console.log("User logged in successfully:", { userId: user.id, username: user.username });
     return Response.json({
       id: user.id,
       username: user.username,
