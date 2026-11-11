@@ -40,7 +40,7 @@ export default function AdminPage() {
   useEffect(() => {
     let active = true;
     const initialize = async () => {
-      const token = sessionStorage.getItem("sessionToken");
+      const token = localStorage.getItem("sessionToken");
       if (!token) {
         if (active) {
           setError("Войдите на странице игры с учётной записью администратора.");
@@ -67,7 +67,7 @@ export default function AdminPage() {
     payload: Record<string, unknown>,
     successMessage: string,
   ) {
-    const token = sessionStorage.getItem("sessionToken");
+    const token = localStorage.getItem("sessionToken");
     if (!token) {
       setError("Сессия истекла. Войдите снова.");
       return;

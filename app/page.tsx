@@ -316,7 +316,7 @@ export default function Home() {
         setPassword("");
         setMessage("Регистрация прошла успешно. Теперь войдите.");
       } else {
-        sessionStorage.setItem("sessionToken", data.sessionToken);
+        localStorage.setItem("sessionToken", data.sessionToken);
         localStorage.setItem("userId", String(data.id));
         setAccount(data);
         resetLocalGame(data.id);

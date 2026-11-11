@@ -41,7 +41,7 @@ let accountSnapshot: Account | null = null;
 function readStoredAccount(): Account | null {
   if (typeof window === "undefined") return null;
 
-  const sessionToken = window.sessionStorage.getItem("sessionToken");
+  const sessionToken = window.localStorage.getItem("sessionToken");
   if (!sessionToken) return null;
   const rawAccount = window.localStorage.getItem(ACCOUNT_STORAGE_KEY);
   if (!rawAccount) return null;
@@ -111,14 +111,17 @@ function publishAccount(account: Account | null): void {
       is_premium: account.is_premium,
       league: account.league,
     }));
+    window.localStorage.setItem("sessionToken", account.sessionToken);
     window.localStorage.setItem("userId", String(account.id));
   } else {
     window.localStorage.removeItem(ACCOUNT_STORAGE_KEY);
+    window.localStorage.removeItem("sessionToken");
   }
   window.dispatchEvent(new Event("chess-account-change"));
 }
 
 function clearStoredSession(): void {
+  window.localStorage.removeItem("sessionToken");
   window.sessionStorage.removeItem("sessionToken");
   window.localStorage.removeItem("userId");
   publishAccount(null);
@@ -142,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = useCallback(async () => {
     const currentAccount = getAccountSnapshot();
-    const sessionToken = window.sessionStorage.getItem("sessionToken");
+    const sessionToken = window.localStorage.getItem("sessionToken");
     const userId = Number(window.localStorage.getItem("userId"));
     if (!currentAccount || !sessionToken || !Number.isSafeInteger(userId) || userId < 1) return;
 
@@ -167,7 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setAccount]);
 
   useEffect(() => {
-    const sessionToken = window.sessionStorage.getItem("sessionToken");
+    const sessionToken = window.localStorage.getItem("sessionToken");
     const userId = Number(window.localStorage.getItem("userId"));
     if (!sessionToken || !Number.isSafeInteger(userId) || userId < 1) return;
 
