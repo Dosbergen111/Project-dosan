@@ -5,6 +5,7 @@ import Link from "next/link";
 import ChatPanel from "@/components/ChatPanel";
 import { useAuth, type Account } from "@/components/AuthProvider";
 import ChessBoard from "@/components/ChessBoard";
+import DailyMatch from "@/components/DailyMatch";
 import OnlinePanel from "@/components/OnlinePanel";
 import PuzzlePanel from "@/components/PuzzlePanel";
 import ProfileSummary from "@/components/ProfileSummary";
@@ -24,6 +25,7 @@ type ApiError = { error?: string };
 type TabId =
   | "landing"
   | "game"
+  | "daily"
   | "rules"
   | "chat"
   | "leaderboard"
@@ -46,10 +48,12 @@ type LeaderEntry = {
   elo: number;
   league: string;
   rank: number;
+  is_premium: boolean;
 };
 
 const TABS: { id: Exclude<TabId, "landing">; label: string }[] = [
   { id: "game", label: "🎮 Игра" },
+  { id: "daily", label: "📅 Дневной матч" },
   { id: "rules", label: "📖 Правила" },
   { id: "chat", label: "💬 Чат" },
   { id: "leaderboard", label: "🏆 Лидеры" },
@@ -95,8 +99,9 @@ export default function Home() {
   const [past, setPast] = useState<{ game: GameState; moves: string[] }[]>([]);
   const [moves, setMoves] = useState<string[]>([]);
   const [selection, setSelection] = useState<{ row: number; col: number } | null>(null);
-  const { account, setAccount, clearAccount } = useAuth();
+  const { account, isSessionLoading, setAccount, clearAccount } = useAuth();
   const [activeTab, setActiveTab] = useState<TabId>("landing");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [gameMode, setGameMode] = useState<"pvp" | "pvc">("pvc");
   const [playerColor, setPlayerColor] = useState<PieceColor>("white");
   const [difficulty, setDifficulty] = useState(1);
@@ -130,6 +135,8 @@ export default function Home() {
   const blackTimeRef = useRef(600);
   const [autoSaveState, setAutoSaveState] = useState("");
   const [analysisStep, setAnalysisStep] = useState(0);
+  const [hintsUsed, setHintsUsed] = useState(0);
+  const [hintMessage, setHintMessage] = useState("");
   const savedGames = useRef(new Set<string>());
 
   const legalMoves = getLegalMoves(game);
@@ -155,6 +162,8 @@ export default function Home() {
   const analysisGame = analysisStates[analysisIndex] ?? game;
   const historyReplayGame = historyReplay?.states[historyReplay.currentIndex] ?? null;
   const gameActive = activeTab === "game";
+  const hintLimit = account?.is_premium ? Number.POSITIVE_INFINITY : 3;
+  const hintsRemaining = Math.max(0, hintLimit - hintsUsed);
 
   useEffect(() => {
     document.body.classList.toggle("light-theme", lightTheme);
@@ -407,6 +416,8 @@ export default function Home() {
   function startNewGame() {
     resetLocalGame(account?.id ?? null);
     setPartyStarted(true);
+    setHintsUsed(0);
+    setHintMessage("");
   }
 
   function changeDifficulty(level: number) {
@@ -548,6 +559,16 @@ export default function Home() {
     setPlayerColor(color);
   }
 
+  function requestHint() {
+    if (gameMode !== "pvc" || gameResult || botTurn || !isHumanTurn || !legalMoves.length || hintsRemaining === 0) return;
+    const move = legalMoves[0];
+    setSelection(move.from);
+    setHintMessage(
+      `Попробуйте ${String.fromCharCode(97 + move.from.col)}${8 - move.from.row} → ${String.fromCharCode(97 + move.to.col)}${8 - move.to.row}.`,
+    );
+    setHintsUsed((used) => used + 1);
+  }
+
   function formatTime(seconds: number) {
     return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
   }
@@ -585,13 +606,18 @@ export default function Home() {
                 🌙
               </label>
             </div>
-            {!account && (
+            {isSessionLoading ? (
+              <div className="session-skeleton" aria-label="Загрузка профиля" aria-busy="true">
+                <span />
+                <span />
+              </div>
+            ) : !account && (
               <button id="login-button" className="auth-button" onClick={() => setAuthOpen(true)}>
                 Войти / Регистрация
               </button>
             )}
           </div>
-          {account && (
+          {!isSessionLoading && account && (
             <div id="user-profile">
               <ProfileSummary />
               <button className="logout-button" onClick={handleLogout} disabled={busy}>🚪 Выйти</button>
@@ -652,7 +678,16 @@ export default function Home() {
       )}
 
       <main className="container">
-        <nav className="tabs" aria-label="Разделы сайта">
+        <button
+          type="button"
+          className="mobile-menu-toggle"
+          aria-expanded={mobileMenuOpen}
+          aria-controls="section-tabs"
+          onClick={() => setMobileMenuOpen((open) => !open)}
+        >
+          {mobileMenuOpen ? "Закрыть разделы" : "☰ Разделы"}
+        </button>
+        <nav id="section-tabs" className={`tabs${mobileMenuOpen ? " open" : ""}`} aria-label="Разделы сайта">
           {TABS.map((tab) => (
             <button
               key={tab.id}
@@ -660,6 +695,7 @@ export default function Home() {
               data-tab={tab.id}
               onClick={() => {
                 setActiveTab(tab.id);
+                setMobileMenuOpen(false);
                 setPanelMessage("");
                 if (tab.id === "analyze") setAnalysisStep(past.length);
               }}
@@ -708,6 +744,15 @@ export default function Home() {
               <button className="settings-button" onClick={() => setActiveTab("settings")} title="Настройки">⚙️</button>
             </div>
           </div>
+        </section>
+
+        <section id="daily" className={`tab-content${activeTab === "daily" ? " active" : ""}`}>
+          <DailyMatch
+            account={account}
+            isSessionLoading={isSessionLoading}
+            onProfile={(profile) => setAccount((previous) =>
+              previous ? { ...previous, ...profile } : previous)}
+          />
         </section>
 
         <section id="game" className={`tab-content${activeTab === "game" ? " active" : ""}`}>
@@ -792,6 +837,28 @@ export default function Home() {
             </div>
             {gameMode === "pvc" && (
               <>
+                <label>💡 Подсказки:</label>
+                <div className="button-group">
+                  <button
+                    type="button"
+                    disabled={Boolean(gameResult) || botTurn || !isHumanTurn || !legalMoves.length || hintsRemaining === 0}
+                    title={
+                      hintsRemaining === 0
+                        ? "Лимит подсказок исчерпан; Premium даёт безлимит"
+                        : gameResult
+                          ? "Партия уже завершена"
+                          : botTurn || !isHumanTurn
+                            ? "Дождитесь своего хода"
+                            : !legalMoves.length
+                              ? "Нет доступных ходов"
+                              : "Показать рекомендуемый ход"
+                    }
+                    onClick={requestHint}
+                  >
+                    {account?.is_premium ? "Подсказка · ∞" : `Подсказка · ${hintsRemaining}/3`}
+                  </button>
+                </div>
+                {hintMessage && <small className="secondary-text" role="status">{hintMessage}</small>}
                 <label>Играть за:</label>
                 <div className="button-group">
                   <button className={playerColor === "white" ? "success" : ""} disabled={partyInProgress} title={partyInProgress ? "Доступно с новой партии" : undefined} onClick={() => changePlayerColor("white")}>⚪ Белые</button>
@@ -884,7 +951,7 @@ export default function Home() {
               {leaderboard.map((player, index) => (
                 <li className={`leaderboard-item${index < 3 ? " top3" : ""}`} key={`${player.username}-${index}`}>
                   <span className="leaderboard-rank">{player.rank}</span>
-                  <span className="leaderboard-name">{player.username}</span>
+                  <span className="leaderboard-name">{player.username}{player.is_premium && <span className="vip-badge leaderboard-vip">👑 VIP</span>}</span>
                   <span className="leaderboard-league">{player.league}</span>
                   <span className="leaderboard-elo">{player.elo}</span>
                 </li>
@@ -914,7 +981,7 @@ export default function Home() {
                 <p className="game-record-moves">{entry.moves}</p>
                 <button type="button" onClick={() => replayHistory(entry)}>▶ Просмотреть партию</button>
               </article>
-            )) : <div className="no-games">Сохранённых партий пока нет.</div>}
+            )) : <div className="no-games">Нет партий.</div>}
             {historyReplay && (
               <div className="history-replay">
                 <h3>Просмотр партии #{historyReplay.gameId}</h3>

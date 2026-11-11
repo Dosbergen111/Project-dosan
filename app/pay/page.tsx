@@ -1,5 +1,8 @@
+"use client";
+
 import Link from "next/link";
 import ProfileSummary from "@/components/ProfileSummary";
+import PremiumActivation from "@/components/PremiumActivation";
 
 export default function PayPage() {
   return (
@@ -15,21 +18,19 @@ export default function PayPage() {
       </header>
       <main className="page-content payment-layout">
         <section className="panel payment-card">
-          <span className="page-badge">Учебная страница</span>
+          <span className="page-badge">Учебный тариф</span>
           <h2>Premium</h2>
           <p className="payment-price">399 <small>₸</small></p>
           <ul className="payment-features">
             <li>Бесконечная энергия</li>
             <li>Золотой VIP-бейдж</li>
             <li>Доступ к уровню «Гроссмейстер»</li>
-            <li>Инструменты анализа партий</li>
-            <li>Отключение рекламы</li>
+            <li>Безлимитные подсказки в игре против бота</li>
           </ul>
-          <div className="notice-box" role="note">
-            Это демонстрационная заглушка. Платёж не принимается, карта не требуется, Premium не активируется.
-          </div>
+          <div className="notice-box" role="note">Учебный режим, списаний нет.</div>
           <div className="page-actions">
-            <Link className="button button-primary" href="/checkout">Посмотреть учебное оформление</Link>
+            <PremiumActivation />
+            <Link className="button button-secondary" href="/checkout">Оформление</Link>
             <Link className="button button-secondary" href="/">Вернуться к игре</Link>
           </div>
         </section>

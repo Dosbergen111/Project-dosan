@@ -1,5 +1,11 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Chess features
+
+- Premium is activated in demo mode and does not collect payment details or charge money.
+- Signed-in players can complete one rating-counted daily match against the medium bot; the limit is keyed by account and UTC date.
+- The game stores the daily match's unfinished position locally so it can be resumed on the same device.
+
 ## Getting Started
 
 First, run the development server:

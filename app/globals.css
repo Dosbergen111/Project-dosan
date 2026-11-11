@@ -3464,3 +3464,147 @@ body.premium-theme #user-profile {
     .online-actions > * { flex: 1 1 100%; }
     .online-room-link-row > * { flex: 1 1 100%; }
 }
+
+/* ---------- Дневной матч и Premium ---------- */
+.mobile-menu-toggle { display: none; }
+.session-skeleton {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 150px;
+    min-height: 38px;
+}
+.session-skeleton span {
+    display: block;
+    width: 70px;
+    height: 24px;
+    border-radius: 7px;
+    background: linear-gradient(90deg, rgba(148, 163, 184, .12), rgba(148, 163, 184, .28), rgba(148, 163, 184, .12));
+    background-size: 200% 100%;
+    animation: session-shimmer 1.4s ease infinite;
+}
+.session-skeleton span + span { width: 52px; }
+.profile-skeleton { min-width: 130px; }
+@keyframes session-shimmer {
+    from { background-position: 100% 0; }
+    to { background-position: -100% 0; }
+}
+body.premium-theme {
+    --accent: #d6ad46;
+    --accent-hover: #edc85f;
+}
+body.premium-theme .vip-badge {
+    display: inline-flex;
+    align-items: center;
+    width: max-content;
+    margin: 0;
+    padding: 3px 8px;
+    color: #f7d96c;
+    background: rgba(215, 173, 70, .12);
+    border: 1px solid rgba(215, 173, 70, .38);
+    border-radius: 999px;
+    font-size: .75rem;
+    font-weight: 750;
+    white-space: nowrap;
+}
+.leaderboard-vip { margin-left: 8px !important; vertical-align: middle; }
+.daily-match-card {
+    width: min(940px, 100%);
+    margin: 0 auto;
+    padding: clamp(18px, 4vw, 30px);
+}
+.daily-match-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+.daily-match-heading h2 { margin: 10px 0 0; }
+.daily-opponent, .daily-message { color: var(--text-muted); line-height: 1.55; }
+.daily-result {
+    display: grid;
+    gap: 8px;
+    width: min(520px, 100%);
+    margin-top: 20px;
+    padding: 18px;
+    background: rgba(0, 200, 255, .07);
+    border: 1px solid rgba(0, 200, 255, .2);
+    border-radius: 12px;
+}
+.daily-result strong { color: var(--text-main); font-size: 1.15rem; }
+.daily-result span, .daily-result small { color: var(--text-muted); }
+.daily-game { max-width: 640px; }
+.daily-match-card .board-wrapper { width: min(100%, 560px); margin: 16px auto; }
+.daily-match-card .board-grid-wrapper { width: 100%; max-width: 560px; }
+.daily-match-card .board { width: 100%; }
+.daily-match-card > .button-primary,
+.daily-match-card > .button-secondary { margin-top: 12px; }
+.payment-status { margin: 8px 0; color: var(--text-muted); }
+.premium-activation { display: grid; gap: 8px; }
+button:disabled, .button:disabled {
+    cursor: not-allowed;
+    opacity: .56;
+    filter: grayscale(.25);
+}
+
+@media (max-width: 800px) {
+    .container { display: flex; flex-direction: column; }
+    .mobile-menu-toggle {
+        display: block;
+        width: calc(100% - 24px);
+        margin: 12px;
+        padding: 11px 14px;
+        text-align: left;
+        color: var(--text-main);
+        background: var(--panel-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+    }
+    .tabs { display: none; }
+    .tabs.open {
+        position: static;
+        display: flex;
+        flex-direction: column;
+        width: auto;
+        height: auto;
+        max-height: 52vh;
+        margin: 0 12px 12px;
+        overflow-x: hidden;
+        overflow-y: auto;
+        background: var(--panel-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 10px;
+    }
+    .tab-button {
+        flex: 0 0 auto;
+        width: 100%;
+        padding: 12px 14px;
+        text-align: left;
+        border-right: 0;
+        border-bottom: 1px solid var(--panel-border);
+        white-space: normal;
+    }
+    .tab-button.active {
+        background: rgba(0, 200, 255, .12);
+        border-left: 4px solid var(--accent);
+        border-bottom-color: var(--panel-border);
+    }
+    .tab-content {
+        width: 100%;
+        margin-left: 0;
+        padding: 14px;
+    }
+}
+@media (max-width: 600px) {
+    .daily-match-card { padding: 16px 12px; }
+    .daily-match-card .board-wrapper { width: 100%; }
+    .daily-match-card .board-grid-wrapper { max-width: min(92vw, 500px); }
+    .daily-match-card .square { font-size: clamp(1.3rem, 8vw, 2.4rem); }
+    .page-actions { gap: 10px; }
+    .page-actions > * { flex: 1 1 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .session-skeleton span { animation: none; }
+}

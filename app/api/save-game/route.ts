@@ -1,4 +1,5 @@
 import { getSessionFromRequest } from "@/lib/auth";
+import { ensureDailyMatchesTable } from "@/lib/daily-match";
 import { pool } from "@/lib/db";
 import { leagueForElo } from "@/lib/elo";
 import type { PoolClient, QueryResultRow } from "pg";
@@ -34,6 +35,7 @@ export async function POST(request: Request) {
   const moves = data.moves;
   const gameMode = data.gameMode === "pvp" ? "pvp" : data.gameMode === "pvc" ? "pvc" : null;
   const difficulty = Number(data.difficulty);
+  const dailyMatch = data.dailyMatch === true;
   const botElo = gameMode === "pvc" ? botEloForDifficulty(difficulty) : null;
 
   if (
@@ -43,13 +45,16 @@ export async function POST(request: Request) {
     typeof moves !== "string" ||
     moves.length > 20_000 ||
     gameMode === null ||
-    (gameMode === "pvc" && botElo === null)
+    (gameMode === "pvc" && botElo === null) ||
+    (data.dailyMatch !== undefined && typeof data.dailyMatch !== "boolean") ||
+    (dailyMatch && (gameMode !== "pvc" || difficulty !== 5))
   ) {
     return Response.json({ error: "Invalid game data or bot difficulty." }, { status: 400 });
   }
 
   let client: PoolClient | undefined;
   try {
+    if (dailyMatch) await ensureDailyMatchesTable();
     client = await pool.connect();
     await client.query("BEGIN");
     const accountResult = await client.query<QueryResultRow>(
@@ -59,6 +64,17 @@ export async function POST(request: Request) {
     if (accountResult.rows.length === 0) {
       await client.query("ROLLBACK");
       return Response.json({ error: "User not found." }, { status: 404 });
+    }
+    if (dailyMatch) {
+      const previousMatch = await client.query(
+        `SELECT 1 FROM daily_matches
+         WHERE user_id = $1 AND match_date = (NOW() AT TIME ZONE 'UTC')::date`,
+        [session.userId],
+      );
+      if (previousMatch.rows.length) {
+        await client.query("ROLLBACK");
+        return Response.json({ error: "Дневной матч уже сыгран сегодня." }, { status: 409 });
+      }
     }
 
     const oldElo = Number(accountResult.rows[0].elo);
@@ -83,6 +99,13 @@ export async function POST(request: Request) {
       league,
       session.userId,
     ]);
+    if (dailyMatch) {
+      await client.query(
+        `INSERT INTO daily_matches (user_id, match_date, result, elo, elo_change, league)
+         VALUES ($1, (NOW() AT TIME ZONE 'UTC')::date, $2, $3, $4, $5)`,
+        [session.userId, result, newElo, eloChange, league],
+      );
+    }
     await client.query("COMMIT");
 
     return Response.json({
@@ -91,6 +114,17 @@ export async function POST(request: Request) {
       elo: newElo,
       eloChange,
       league,
+      ...(dailyMatch
+        ? {
+            dailyMatch: {
+              date: new Date().toISOString().slice(0, 10),
+              result,
+              elo: newElo,
+              eloChange,
+              league,
+            },
+          }
+        : {}),
     });
   } catch (error) {
     if (client) {

@@ -101,7 +101,7 @@ export default function ChatPanel({
       <h2>💬 Глобальный чат</h2>
       <div id="chat-box" className="chat-box" aria-live="polite">
         {error && <p className="chat-error">{error}</p>}
-        {!messages.length && !error && <p className="chat-empty">Сообщений пока нет.</p>}
+        {!messages.length && !error && <p className="chat-empty">Чат пуст.</p>}
         {messages.map((item) => (
           <div className="chat-msg" key={item.id}>
             <strong>{item.username}</strong>

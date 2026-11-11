@@ -27,6 +27,7 @@ type CachedAccount = Omit<Account, "sessionToken">;
 type ProfileData = CachedAccount;
 type AuthContextValue = {
   account: Account | null;
+  isSessionLoading: boolean;
   setAccount: Dispatch<SetStateAction<Account | null>>;
   clearAccount: () => void;
   refreshProfile: () => Promise<void>;
@@ -37,6 +38,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 let snapshotInitialized = false;
 let accountSnapshot: Account | null = null;
+let sessionLoadingSnapshot = true;
 
 function readStoredAccount(): Account | null {
   if (typeof window === "undefined") return null;
@@ -98,6 +100,20 @@ function subscribeToAccount(onChange: () => void): () => void {
   };
 }
 
+function getSessionLoadingSnapshot(): boolean {
+  return sessionLoadingSnapshot;
+}
+
+function subscribeToSessionLoading(onChange: () => void): () => void {
+  window.addEventListener("chess-session-ready", onChange);
+  return () => window.removeEventListener("chess-session-ready", onChange);
+}
+
+function finishSessionLoading(): void {
+  sessionLoadingSnapshot = false;
+  window.dispatchEvent(new Event("chess-session-ready"));
+}
+
 function publishAccount(account: Account | null): void {
   accountSnapshot = account;
   snapshotInitialized = true;
@@ -125,11 +141,20 @@ function clearStoredSession(): void {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const isSessionLoading = useSyncExternalStore(
+    subscribeToSessionLoading,
+    getSessionLoadingSnapshot,
+    () => true,
+  );
   const account = useSyncExternalStore(
     subscribeToAccount,
     getAccountSnapshot,
     () => null,
   );
+
+  useEffect(() => {
+    document.body.classList.toggle("premium-theme", account?.is_premium === true);
+  }, [account?.is_premium]);
 
   const setAccount = useCallback<Dispatch<SetStateAction<Account | null>>>((next) => {
     const current = getAccountSnapshot();
@@ -169,7 +194,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const sessionToken = window.sessionStorage.getItem("sessionToken");
     const userId = Number(window.localStorage.getItem("userId"));
-    if (!sessionToken || !Number.isSafeInteger(userId) || userId < 1) return;
+    if (!sessionToken || !Number.isSafeInteger(userId) || userId < 1) {
+      finishSessionLoading();
+      return;
+    }
 
     let active = true;
     let retryTimer: number | undefined;
@@ -201,6 +229,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         retryTimer = window.setTimeout(() => void loadProfile(), retryDelay);
         retryDelay = Math.min(retryDelay * 2, 30_000);
       } finally {
+        if (active) finishSessionLoading();
         if (requestTimeout !== undefined) window.clearTimeout(requestTimeout);
       }
     };
@@ -216,8 +245,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [setAccount]);
 
   const value = useMemo(
-    () => ({ account, setAccount, clearAccount, refreshProfile }),
-    [account, setAccount, clearAccount, refreshProfile],
+    () => ({ account, isSessionLoading, setAccount, clearAccount, refreshProfile }),
+    [account, isSessionLoading, setAccount, clearAccount, refreshProfile],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

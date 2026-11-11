@@ -3,7 +3,15 @@
 import { useAuth } from "@/components/AuthProvider";
 
 export default function ProfileSummary() {
-  const { account } = useAuth();
+  const { account, isSessionLoading } = useAuth();
+  if (isSessionLoading) {
+    return (
+      <div className="session-skeleton profile-skeleton" aria-label="Загрузка профиля" aria-busy="true">
+        <span />
+        <span />
+      </div>
+    );
+  }
   if (!account) return null;
 
   return (
