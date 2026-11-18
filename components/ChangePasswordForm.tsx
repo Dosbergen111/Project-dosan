@@ -19,7 +19,7 @@ export default function ChangePasswordForm() {
       const response = await fetch("/api/change-password", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: account.id, oldPassword, newPassword }),
+        body: JSON.stringify({ oldPassword, newPassword }),
       });
       const data = (await response.json()) as { success?: boolean; error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось сменить пароль.");

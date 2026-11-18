@@ -7,6 +7,7 @@ import { createInitialState, stateFromFen, stateToFen } from "@/lib/chess/board"
 import { moveToUci } from "@/lib/chess/moves";
 import { gameOutcome, getLegalMoves, makeMove } from "@/lib/chess/rules";
 import type { ChessMove, GameState, PieceColor } from "@/lib/chess/types";
+import { normalizeBotMove, chooseBotMove } from "@/lib/chess/engine";
 import { LiaCalendarSolid, LiaChessBoardSolid } from "react-icons/lia";
 
 type GameResult = "win" | "loss" | "draw";
@@ -57,6 +58,7 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
   const [botThinking, setBotThinking] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const savedGames = useRef(new Set<string>());
+  const botRequestId = useRef(0);
   const legalMoves = getLegalMoves(game);
   const outcome = gameOutcome(game);
   const botTurn = started && !gameResult && game.turn === "black" && !outcome;
@@ -146,13 +148,16 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
 
   useEffect(() => {
     if (!botTurn) return;
+    const requestId = ++botRequestId.current;
     setBotThinking(true);
     const worker = new Worker(new URL("../../lib/chess/bot.worker.ts", import.meta.url), {
       type: "module",
     });
     worker.onmessage = (event: MessageEvent<ChessMove | null>) => {
+      if (botRequestId.current !== requestId) return;
       setBotThinking(false);
-      const move = event.data;
+      const normalized = normalizeBotMove(game, event.data, "black");
+      const move = normalized ?? chooseBotMove(game, 5, "black");
       if (!move) return;
       const next = makeMove(game, move);
       if (!next) return;
@@ -169,7 +174,10 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
       setError("Не удалось рассчитать ход соперника.");
     };
     worker.postMessage({ state: game, difficulty: 5, botColor: "black" satisfies PieceColor });
-    return () => worker.terminate();
+    return () => {
+      botRequestId.current += 1;
+      worker.terminate();
+    };
   }, [activeDate, botTurn, game, moves, persistMatch]);
 
   useEffect(() => {

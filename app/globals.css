@@ -281,18 +281,23 @@ h1:hover {
 }
 
 .status {
-    flex: 1;
+    flex: 0 1 180px;
+    min-width: 150px;
+    max-width: 220px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
     margin-bottom: 0;
-    min-width: 200px;
     background: linear-gradient(135deg, var(--tab-bg) 0%, var(--tab-active) 100%);
 }
 
 .timer-display {
     display: flex;
-    gap: 20px;
+    gap: 12px;
     align-items: center;
-    flex: 1;
-    min-width: 250px;
+    flex: 0 1 296px;
+    min-width: 292px;
+    max-width: 100%;
 }
 
 .timer-white, .timer-black {
@@ -300,7 +305,9 @@ h1:hover {
     flex-direction: column;
     align-items: center;
     background-color: var(--rules-bg);
-    padding: 15px 25px;
+    min-width: 140px;
+    min-height: 72px;
+    padding: 10px 14px;
     border-radius: 8px;
     border: 2px solid var(--border-color);
     flex: 1;
@@ -315,8 +322,10 @@ h1:hover {
 }
 
 .timer-value {
-    font-size: 36px;
+    font-size: clamp(1.25rem, 2vw, 1.75rem);
     font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
     color: var(--accent);
     font-family: 'Courier New', monospace;
     text-shadow: 0 0 10px rgba(30, 144, 255, 0.3);
@@ -364,7 +373,10 @@ h1:hover {
     }
 
     .timer-display {
-        min-width: 100%;
+        flex: 1 1 292px;
+        min-width: 292px;
+        max-width: 100%;
+        flex-wrap: wrap;
     }
 }
 
@@ -3267,15 +3279,16 @@ button:not(:disabled):hover, .button:hover, .tab-button:hover {
 }
 
 .play-board-column .timer-display {
-    min-width: 0;
+    flex: 0 1 296px;
+    min-width: 292px;
+    max-width: 100%;
     gap: 8px;
 }
 
 .play-board-column .timer-white,
 .play-board-column .timer-black {
-    min-width: 0;
-    padding-right: 10px;
-    padding-left: 10px;
+    min-width: 140px;
+    padding: 10px 14px;
 }
 
 .play-board-column .board-grid-wrapper .board {
@@ -3821,6 +3834,48 @@ button:disabled, .button:disabled {
 }
 @media (prefers-reduced-motion: reduce) {
     .session-skeleton span { animation: none; }
+}
+
+@media (max-width: 800px) {
+    .game-top-panel {
+        flex-wrap: wrap;
+        gap: 10px;
+        width: 100%;
+        min-width: 0;
+    }
+    .game-top-panel .status {
+        flex: 1 1 100%;
+        max-width: none;
+        min-width: 0;
+    }
+    .game-top-panel .timer-display {
+        flex: 1 1 292px;
+        min-width: min(292px, 100%);
+        max-width: 100%;
+    }
+    .game-top-panel .timer-white,
+    .game-top-panel .timer-black {
+        min-width: 140px;
+    }
+    .game-top-panel .board-size-quick {
+        margin-left: 0;
+    }
+}
+@media (max-width: 390px) {
+    .game-top-panel {
+        padding: 10px;
+    }
+    .game-top-panel .timer-display {
+        width: 100%;
+        min-width: 0;
+        gap: 6px;
+    }
+    .game-top-panel .timer-white,
+    .game-top-panel .timer-black {
+        min-width: 140px;
+        flex: 1 1 140px;
+        padding-inline: 8px;
+    }
 }
 
 .route-container {

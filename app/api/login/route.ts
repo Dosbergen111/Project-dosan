@@ -1,10 +1,10 @@
 import bcrypt from "bcryptjs";
 import { cookies } from "next/headers";
 import {
-  createSessionCookieValue,
+  createSessionToken,
   SESSION_COOKIE_NAME,
   SESSION_TTL_SECONDS,
-  USER_ID_COOKIE_NAME,
+  SessionConfigurationError,
 } from "@/lib/auth";
 import { pool } from "@/lib/db";
 import { leagueForElo } from "@/lib/elo";
@@ -66,18 +66,16 @@ export async function POST(request: Request) {
       [user.id],
     );
 
-    console.log("User logged in successfully:", { userId: user.id, username: user.username });
-    const session = createSessionCookieValue(user.id);
+    const session = await createSessionToken(user.id);
     const cookieStore = await cookies();
     const cookieOptions = {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
       maxAge: SESSION_TTL_SECONDS,
     } as const;
     cookieStore.set(SESSION_COOKIE_NAME, session, cookieOptions);
-    cookieStore.set(USER_ID_COOKIE_NAME, String(user.id), cookieOptions);
     return Response.json({
       id: user.id,
       username: user.username,
@@ -88,7 +86,9 @@ export async function POST(request: Request) {
       league: leagueForElo(user.elo),
     });
   } catch (error) {
-    console.error("Login error:", error);
+    if (error instanceof SessionConfigurationError) {
+      return Response.json({ error: "Server session configuration error: SESSION_SECRET is not configured." }, { status: 500 });
+    }
     return Response.json({ error: "Login failed." }, { status: 500 });
   }
 }

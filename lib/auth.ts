@@ -1,5 +1,5 @@
-import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
+import { SignJWT, jwtVerify } from "jose";
 import { pool } from "@/lib/db";
 
 type Session = {
@@ -7,71 +7,54 @@ type Session = {
   expiresAt: number;
 };
 
-export const SESSION_TTL_SECONDS = 12 * 60 * 60;
-const SESSION_TTL_MS = SESSION_TTL_SECONDS * 1000;
+export const SESSION_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const SESSION_COOKIE_NAME = "session";
-export const USER_ID_COOKIE_NAME = "userId";
 
-function sessionSecret(): string {
-  const secret = process.env.SESSION_SECRET ?? process.env.DATABASE_URL;
-  if (!secret) throw new Error("SESSION_SECRET or DATABASE_URL must be configured.");
-  return secret;
+export class SessionConfigurationError extends Error {
+  constructor() {
+    super("SESSION_SECRET is not configured.");
+    this.name = "SessionConfigurationError";
+  }
 }
 
-function sign(payload: string): string {
-  return createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
+function sessionSecret(): Uint8Array {
+  if (!process.env.SESSION_SECRET) throw new SessionConfigurationError();
+  return new TextEncoder().encode(process.env.SESSION_SECRET);
 }
 
-export function createSessionCookieValue(userId: number): string {
-  const payload = Buffer.from(
-    `${userId}.${Date.now() + SESSION_TTL_MS}`,
-  ).toString("base64url");
-  return `${payload}.${sign(payload)}`;
+export async function createSessionToken(userId: number): Promise<string> {
+  return new SignJWT({ sub: String(userId) })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime(`${SESSION_TTL_SECONDS}s`)
+    .sign(sessionSecret());
 }
 
 export async function getSession(): Promise<Session | null> {
   const token = (await cookies()).get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
-
-  const [payload, signature, extra] = token.split(".");
-  if (!payload || !signature || extra !== undefined) return null;
-
-  let validSignature: string;
   try {
-    validSignature = sign(payload);
+    const { payload } = await jwtVerify(token, sessionSecret());
+    const userId = Number(payload.sub);
+    const expiresAt = typeof payload.exp === "number" ? payload.exp * 1000 : 0;
+    if (!Number.isSafeInteger(userId) || userId < 1 || expiresAt <= Date.now()) return null;
+    return { userId, expiresAt };
   } catch (error) {
-    console.error("Session verification is unavailable:", error);
+    if (error instanceof SessionConfigurationError) throw error;
     return null;
   }
-  const signatureBuffer = Buffer.from(signature);
-  const expectedBuffer = Buffer.from(validSignature);
-  if (
-    signatureBuffer.length !== expectedBuffer.length ||
-    !timingSafeEqual(signatureBuffer, expectedBuffer)
-  ) return null;
-
-  let decoded: string;
-  try {
-    decoded = Buffer.from(payload, "base64url").toString();
-  } catch {
-    return null;
-  }
-  const match = decoded.match(/^([1-9]\d*)\.(\d+)$/);
-  if (!match) return null;
-
-  const userId = Number(match[1]);
-  const expiresAt = Number(match[2]);
-  if (
-    !Number.isSafeInteger(userId) ||
-    !Number.isSafeInteger(expiresAt) ||
-    expiresAt <= Date.now()
-  ) return null;
-
-  return { userId, expiresAt };
 }
 
 export async function requireAdmin(): Promise<Session | Response> {
-  const session = await getSession();
+  let session: Session | null;
+  try {
+    session = await getSession();
+  } catch (error) {
+    if (error instanceof SessionConfigurationError) {
+      return Response.json({ error: "Server session configuration error: SESSION_SECRET is not configured." }, { status: 500 });
+    }
+    throw error;
+  }
   if (!session) {
     return Response.json({ error: "Administrator sign-in required." }, { status: 401 });
   }

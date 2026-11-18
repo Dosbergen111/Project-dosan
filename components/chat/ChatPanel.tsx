@@ -78,11 +78,7 @@ export default function ChatPanel({
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          userId: account.id,
-          username: account.username,
-          message: text.trim(),
-        }),
+        body: JSON.stringify({ message: text.trim() }),
       });
       const data = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Не удалось отправить сообщение.");

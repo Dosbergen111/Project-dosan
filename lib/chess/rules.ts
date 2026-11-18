@@ -296,7 +296,18 @@ export function getLegalMoves(
   return legalMoves;
 }
 
-export function makeMove(state: GameState, move: ChessMove): GameState | null {
+export function makeMove(state: GameState, move: ChessMove | null | undefined): GameState | null {
+  if (
+    !move ||
+    !move.from ||
+    !move.to ||
+    !Number.isInteger(move.from.row) ||
+    !Number.isInteger(move.from.col) ||
+    !Number.isInteger(move.to.row) ||
+    !Number.isInteger(move.to.col)
+  ) {
+    return state;
+  }
   const legalMove = getLegalMoves(state).find(
     (candidate) =>
       candidate.from.row === move.from.row &&

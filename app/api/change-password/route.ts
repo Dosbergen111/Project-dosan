@@ -19,12 +19,8 @@ export async function POST(request: Request) {
   if (
     typeof body !== "object" ||
     body === null ||
-    !("userId" in body) ||
     !("oldPassword" in body) ||
     !("newPassword" in body) ||
-    typeof body.userId !== "number" ||
-    !Number.isSafeInteger(body.userId) ||
-    body.userId < 1 ||
     typeof body.oldPassword !== "string" ||
     !body.oldPassword ||
     typeof body.newPassword !== "string" ||
@@ -32,10 +28,6 @@ export async function POST(request: Request) {
   ) {
     return NextResponse.json({ error: "Invalid password change data." }, { status: 400 });
   }
-  if (body.userId !== session.userId) {
-    return NextResponse.json({ error: "Cannot change another user's password." }, { status: 403 });
-  }
-
   try {
     const result = await pool.query(
       "SELECT password_hash FROM users WHERE id = $1",

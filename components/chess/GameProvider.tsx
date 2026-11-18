@@ -14,6 +14,7 @@ import {
 import { useAuth } from "@/components/AuthProvider";
 import { createInitialState, stateFromFen, stateToFen } from "@/lib/chess/board";
 import { moveToUci } from "@/lib/chess/moves";
+import { normalizeBotMove, chooseBotMove } from "@/lib/chess/engine";
 import { gameOutcome, getLegalMoves, isInCheck, makeMove } from "@/lib/chess/rules";
 import type { ChessMove, GameMode, GameResult, GameState, PartySnapshot, PieceColor } from "@/lib/chess/types";
 
@@ -103,6 +104,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [materialShown, setMaterialShown] = useState(true);
   const [lightTheme, setLightTheme] = useState(false);
   const savedGames = useRef(new Set<string>());
+  const botRequestId = useRef(0);
 
   useEffect(() => {
     document.body.classList.toggle("light-theme", lightTheme);
@@ -116,6 +118,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const partyInProgress = partyStarted && !gameResult;
 
   const resetLocalGame = useCallback((ownerId: number | null = account?.id ?? null) => {
+    botRequestId.current += 1;
     setGame(createInitialState());
     setPast([]);
     setMoves([]);
@@ -229,11 +232,14 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!botTurn) return;
+    const requestId = ++botRequestId.current;
     setBotThinking(true);
     const worker = new Worker(new URL("../../lib/chess/bot.worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (event: MessageEvent<ChessMove | null>) => {
+      if (botRequestId.current !== requestId) return;
       setBotThinking(false);
-      const move = event.data;
+      const normalized = normalizeBotMove(game, event.data, game.turn);
+      const move = normalized ?? chooseBotMove(game, activeDifficulty, game.turn);
       if (!move) return;
       const next = makeMove(game, move);
       if (!next) return;
@@ -245,7 +251,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
     };
     worker.onerror = () => setBotThinking(false);
     worker.postMessage({ state: game, difficulty: activeDifficulty, botColor: game.turn });
-    return () => worker.terminate();
+    return () => {
+      botRequestId.current += 1;
+      worker.terminate();
+    };
   }, [activeDifficulty, botTurn, game, moves, playerColor]);
 
   useEffect(() => {

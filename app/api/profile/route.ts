@@ -1,22 +1,20 @@
-import { cookies } from "next/headers";
-import { getSession, USER_ID_COOKIE_NAME } from "@/lib/auth";
+import { getSession, SessionConfigurationError } from "@/lib/auth";
 import { pool } from "@/lib/db";
 import { leagueForElo } from "@/lib/elo";
 import { regenerateEnergy } from "@/lib/energy";
 
 export async function GET() {
-  const session = await getSession();
-  const userIdValue = (await cookies()).get(USER_ID_COOKIE_NAME)?.value;
-  const userId = Number(userIdValue);
-  if (
-    !session ||
-    !userIdValue ||
-    !Number.isSafeInteger(userId) ||
-    userId < 1 ||
-    userId !== session.userId
-  ) {
-    return Response.json({ error: "Sign-in required to view profile." }, { status: 401 });
+  let session;
+  try {
+    session = await getSession();
+  } catch (error) {
+    if (error instanceof SessionConfigurationError) {
+      return Response.json({ error: "Server session configuration error: SESSION_SECRET is not configured." }, { status: 500 });
+    }
+    throw error;
   }
+  if (!session) return Response.json({ error: "Sign-in required to view profile." }, { status: 401 });
+  const userId = session.userId;
 
   try {
     await regenerateEnergy(userId);

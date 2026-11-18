@@ -108,7 +108,7 @@ export default function OnlinePanel({
     const response = await fetch(`/api/room/${encodeURIComponent(id)}/join`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId: account?.id, username: account?.username }),
+      body: JSON.stringify({}),
     });
     const data = await readResponse<{
       playerToken: string;
@@ -223,7 +223,7 @@ export default function OnlinePanel({
       const response = await fetch("/api/room/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: account?.id, username: account?.username }),
+        body: JSON.stringify({}),
       });
       const data = await readResponse<{
         roomId: string;

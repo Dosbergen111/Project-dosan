@@ -1,5 +1,6 @@
 import { applyMove, getLegalMoves, isInCheck } from "@/lib/chess/rules";
 import { levelByDifficulty } from "@/lib/chess/levels";
+import { uciToMove } from "@/lib/chess/moves";
 import type { ChessMove, GameState, PieceColor, PieceType } from "@/lib/chess/types";
 
 const PIECE_VALUES: Record<PieceType, number> = {
@@ -96,4 +97,38 @@ export function chooseBotMove(
 
   if (level.skill >= 20) return bestMoves[0] ?? moves[0];
   return bestMoves[Math.floor(Math.random() * bestMoves.length)] ?? moves[0];
+}
+
+export function normalizeBotMove(
+  state: GameState,
+  result: unknown,
+  botColor: PieceColor = state.turn,
+): ChessMove | null {
+  const legalMoves = getLegalMoves(state, botColor);
+  if (!Array.isArray(result) && typeof result !== "string" && typeof result !== "object") return null;
+
+  let candidate: ChessMove | null = null;
+  if (typeof result === "string") {
+    candidate = uciToMove(result);
+  } else if (result && typeof result === "object") {
+    const move = result as Partial<ChessMove>;
+    if (
+      move.from && move.to &&
+      Number.isInteger(move.from.row) && Number.isInteger(move.from.col) &&
+      Number.isInteger(move.to.row) && Number.isInteger(move.to.col)
+    ) {
+      candidate = move as ChessMove;
+    }
+  }
+
+  const found = candidate
+    ? legalMoves.find((move) =>
+        move.from.row === candidate?.from.row &&
+        move.from.col === candidate?.from.col &&
+        move.to.row === candidate?.to.row &&
+        move.to.col === candidate?.to.col &&
+        (!candidate.promotion || move.promotion === candidate.promotion),
+      )
+    : null;
+  return found ?? null;
 }

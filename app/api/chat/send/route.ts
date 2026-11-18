@@ -17,18 +17,15 @@ export async function POST(request: Request) {
   if (
     typeof body !== "object" ||
     body === null ||
-    !("message" in body) ||
-    !("userId" in body) ||
-    !("username" in body)
+    !("message" in body)
   ) {
     return Response.json({ error: "Message is required." }, { status: 400 });
   }
-  const { message, userId } = body;
+  const { message } = body;
   if (
     typeof message !== "string" ||
     !message.trim() ||
-    message.length > 500 ||
-    Number(userId) !== session.userId
+    message.length > 500
   ) {
     return Response.json({ error: "Message must be 1–500 characters." }, { status: 400 });
   }
