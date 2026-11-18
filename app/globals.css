@@ -3248,6 +3248,220 @@ button:not(:disabled):hover, .button:hover, .tab-button:hover {
 .square { transition: background-color .12s ease; }
 .square:hover { filter: none; box-shadow: none; }
 
+.play-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+    align-items: start;
+    gap: 20px;
+    width: 100%;
+    min-width: 0;
+}
+
+.play-board-column,
+.play-sidebar {
+    min-width: 0;
+}
+
+.play-board-column .game-top-panel {
+    margin-bottom: 16px;
+}
+
+.play-board-column .timer-display {
+    min-width: 0;
+    gap: 8px;
+}
+
+.play-board-column .timer-white,
+.play-board-column .timer-black {
+    min-width: 0;
+    padding-right: 10px;
+    padding-left: 10px;
+}
+
+.play-board-column .board-grid-wrapper .board {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.play-board-column .board-wrapper {
+    padding: 20px;
+}
+
+.play-layout .board-grid-wrapper {
+    width: min(100%, 680px);
+    max-width: 100%;
+    min-width: 0;
+}
+
+.play-board-column .moves-panel {
+    margin-top: 16px;
+}
+
+.play-sidebar {
+    display: grid;
+    gap: 14px;
+    width: 100%;
+    max-width: 320px;
+}
+
+.play-card {
+    min-width: 0;
+    padding: 16px;
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    background: var(--tab-bg);
+    box-shadow: 0 4px 12px var(--rules-shadow);
+}
+
+.play-section-title {
+    margin: 0 0 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-color);
+    color: var(--accent);
+    font-size: 17px;
+}
+
+.game-setting-group {
+    margin-top: 14px;
+}
+
+.game-setting-group h3 {
+    margin: 0 0 7px;
+    color: var(--secondary-text);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.game-option-group {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 6px;
+}
+
+.game-option-group button {
+    min-width: 42px;
+    min-height: 36px;
+    padding: 6px 9px;
+    font-size: 13px;
+}
+
+.game-option-group button:disabled {
+    cursor: not-allowed;
+    opacity: .58;
+    transform: none;
+    box-shadow: none;
+}
+
+.game-option-unit {
+    align-self: center;
+    color: var(--secondary-text);
+    font-size: 12px;
+}
+
+.game-level-options button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+}
+
+.game-level-options small {
+    font-size: 9px;
+    line-height: 1.1;
+}
+
+.opponent-name {
+    font-size: 16px;
+    font-weight: 600;
+}
+
+.opponent-elo {
+    margin-top: 4px;
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.opponent-level {
+    margin-top: 3px;
+    color: var(--secondary-text);
+    font-size: 12px;
+}
+
+.game-action-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.game-action-grid button {
+    display: flex;
+    min-width: 0;
+    min-height: 42px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 5px;
+    white-space: normal;
+    font-size: 12px;
+}
+
+.game-action-grid button:disabled {
+    cursor: not-allowed;
+    opacity: .58;
+    transform: none;
+    box-shadow: none;
+}
+
+.game-hint-message {
+    display: block;
+    margin-top: 10px;
+}
+
+.game-fen-controls {
+    display: grid;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.game-fen-controls input {
+    width: 100%;
+    min-width: 0;
+}
+
+.game-fen-controls button {
+    width: 100%;
+    white-space: normal;
+}
+
+.game-fen-controls p {
+    margin: 0;
+}
+
+@media (max-width: 800px) {
+    .play-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .play-sidebar {
+        max-width: none;
+    }
+
+    .play-board-column .board-wrapper {
+        padding: 12px;
+    }
+
+    .play-board-column .timer-white,
+    .play-board-column .timer-black {
+        padding: 10px 6px;
+    }
+
+    .play-board-column .timer-value {
+        font-size: clamp(18px, 6vw, 24px);
+    }
+}
+
 body > header:not(.site-header) > .header-right { display: contents; }
 body > header.site-header {
     display: grid;
