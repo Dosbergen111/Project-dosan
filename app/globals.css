@@ -3608,3 +3608,41 @@ button:disabled, .button:disabled {
 @media (prefers-reduced-motion: reduce) {
     .session-skeleton span { animation: none; }
 }
+
+.route-container {
+    display: grid;
+    grid-template-columns: 180px minmax(0, 1fr);
+}
+.route-sidebar {
+    position: sticky;
+    top: 0;
+    height: fit-content;
+}
+.route-content {
+    min-width: 0;
+}
+.route-content > .container {
+    width: 100%;
+}
+.route-content .tab-content {
+    display: none;
+}
+.route-content .tab-content.active {
+    display: block;
+}
+@media (max-width: 768px) {
+    .route-container {
+        display: block;
+    }
+    .route-sidebar {
+        position: static;
+        width: 100%;
+        display: flex;
+        flex-direction: row;
+        overflow-x: auto;
+    }
+    .route-sidebar .tab-button {
+        flex: 0 0 auto;
+        width: auto;
+    }
+}
