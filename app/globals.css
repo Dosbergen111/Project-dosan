@@ -396,157 +396,50 @@ h1:hover {
     min-height: auto;
 }
 
-/* Основной контейнер с CSS Grid 9x9 */
+/* Board: exactly 8 × 8, with coordinates rendered inside edge squares. */
 .board-grid-wrapper {
-    display: grid;
-    gap: 0;
-    background-color: var(--light-square);
+    --board-size: 480px;
+    width: min(100%, var(--board-size));
+    max-width: var(--board-size);
+    aspect-ratio: 1 / 1;
+    min-width: 0;
+    display: block;
     border: 3px solid var(--board-border);
-    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
     border-radius: 4px;
     overflow: hidden;
-    width: 100%;
-    max-width: 680px;
-    aspect-ratio: 1 / 1;
-    min-width: 260px;
-
-    /* По умолчанию для medium размера */
-    grid-template-columns: 30px repeat(8, 1fr);
-    grid-template-rows: 24px repeat(8, 1fr);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
 }
 
-/* Угловая пустая ячейка */
-.board-corner {
-    background-color: transparent;
-    grid-column: 1;
-    grid-row: 1;
+.board-grid-wrapper.board-size-small {
+    --board-size: 360px;
 }
 
-/* Буквы колонн (A-H) */
-/* .board-corner + .col-label * 8 */
-.col-label {
-    background-color: transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--secondary-text);
-    grid-row: 1;
-    height: 100%;
-    width: 100%;
+.board-grid-wrapper.board-size-medium {
+    --board-size: 480px;
 }
 
-/* Явные позиции для каждого col-label (2-й по 9-й элементы) */
-.board-grid-wrapper > .col-label:nth-child(2) { grid-column: 2; }
-.board-grid-wrapper > .col-label:nth-child(3) { grid-column: 3; }
-.board-grid-wrapper > .col-label:nth-child(4) { grid-column: 4; }
-.board-grid-wrapper > .col-label:nth-child(5) { grid-column: 5; }
-.board-grid-wrapper > .col-label:nth-child(6) { grid-column: 6; }
-.board-grid-wrapper > .col-label:nth-child(7) { grid-column: 7; }
-.board-grid-wrapper > .col-label:nth-child(8) { grid-column: 8; }
-.board-grid-wrapper > .col-label:nth-child(9) { grid-column: 9; }
-
-/* Цифры рядов (8-1) */
-/* .board-corner + .col-label * 8 + .row-label * 8 */
-.row-label {
-    background-color: transparent;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--secondary-text);
-    grid-column: 1;
-    height: 100%;
-    width: 100%;
+.board-grid-wrapper.board-size-large {
+    --board-size: 640px;
 }
 
-/* Явные позиции для каждого row-label (10-й по 17-й элементы) */
-.board-grid-wrapper > .row-label:nth-child(10) { grid-row: 2; }
-.board-grid-wrapper > .row-label:nth-child(11) { grid-row: 3; }
-.board-grid-wrapper > .row-label:nth-child(12) { grid-row: 4; }
-.board-grid-wrapper > .row-label:nth-child(13) { grid-row: 5; }
-.board-grid-wrapper > .row-label:nth-child(14) { grid-row: 6; }
-.board-grid-wrapper > .row-label:nth-child(15) { grid-row: 7; }
-.board-grid-wrapper > .row-label:nth-child(16) { grid-row: 8; }
-.board-grid-wrapper > .row-label:nth-child(17) { grid-row: 9; }
-
-/* Доска занимает ячейки от (2, 2) до (9, 9) */
 .board-grid-wrapper .board {
-    grid-column: 2 / -1;
-    grid-row: 2 / -1;
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
-    grid-template-rows: repeat(8, 1fr);
-    gap: 0;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    grid-template-rows: repeat(8, minmax(0, 1fr));
     width: 100%;
     height: 100%;
+    aspect-ratio: 1 / 1;
+    gap: 0;
     border: none;
     box-shadow: none;
     background-color: transparent;
 }
 
-/* РАЗМЕРЫ ДОСКИ */
-
-/* Small (40px на клетку) */
-.board-grid-wrapper.board-size-small {
-    grid-template-columns: 20px repeat(8, 1fr);
-    grid-template-rows: 16px repeat(8, 1fr);
-    max-width: 340px;
-    width: min(340px, 95vw);
-}
-
-.board-grid-wrapper.board-size-small .col-label {
-    font-size: 10px;
-}
-
-.board-grid-wrapper.board-size-small .row-label {
-    font-size: 10px;
-}
-
-.board-grid-wrapper.board-size-small .square {
-    font-size: 28px;
-}
-
-/* Medium (60px на клетку) */
-.board-grid-wrapper.board-size-medium {
-    grid-template-columns: 30px repeat(8, 1fr);
-    grid-template-rows: 24px repeat(8, 1fr);
-    max-width: 510px;
-    width: min(510px, 95vw);
-}
-
-.board-grid-wrapper.board-size-medium .col-label {
-    font-size: 12px;
-}
-
-.board-grid-wrapper.board-size-medium .row-label {
-    font-size: 12px;
-}
-
-.board-grid-wrapper.board-size-medium .square {
-    font-size: 45px;
-}
-
-/* Large (80px на клетку) */
-.board-grid-wrapper.board-size-large {
-    grid-template-columns: 40px repeat(8, 1fr);
-    grid-template-rows: 32px repeat(8, 1fr);
-    max-width: 680px;
-    width: min(680px, 95vw);
-}
-
-.board-grid-wrapper.board-size-large .col-label {
-    font-size: 14px;
-}
-
-.board-grid-wrapper.board-size-large .row-label {
-    font-size: 14px;
-}
-
-.board-grid-wrapper.board-size-large .square {
-    font-size: 55px;
+.board-grid-wrapper .square {
+    width: 100%;
+    min-width: 0;
+    aspect-ratio: 1 / 1;
+    font-size: clamp(1.35rem, calc(var(--board-size) / 12), 3.4rem);
 }
 
 .white-piece {
@@ -965,6 +858,26 @@ button.success:hover {
     line-height: 1;
 }
 
+.square-rank,
+.square-file {
+    position: absolute;
+    z-index: 2;
+    font-size: clamp(0.55rem, 1.2vw, 0.75rem);
+    font-weight: 800;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.square-rank {
+    top: 3px;
+    left: 4px;
+}
+
+.square-file {
+    right: 4px;
+    bottom: 3px;
+}
+
 .square:active {
     transform: scale(0.95);
 }
@@ -1229,8 +1142,8 @@ button.success:hover {
     }
 
     .board-grid-wrapper {
-        max-width: 95vw;
-        width: 100%;
+        max-width: 100%;
+        width: min(100%, var(--board-size));
         margin: 0 auto;
         aspect-ratio: 1 / 1;
     }
@@ -1242,7 +1155,7 @@ button.success:hover {
         height: 100%;
         max-width: 95vw;
         aspect-ratio: 1 / 1;
-        min-width: 260px;
+        min-width: 0;
     }
 
     .square {
@@ -3301,8 +3214,8 @@ button:not(:disabled):hover, .button:hover, .tab-button:hover {
 }
 
 .play-layout .board-grid-wrapper {
-    width: min(100%, 680px);
-    max-width: 100%;
+    width: min(100%, var(--board-size));
+    max-width: var(--board-size);
     min-width: 0;
 }
 
@@ -3764,7 +3677,7 @@ body.premium-theme .vip-badge {
 .daily-result span, .daily-result small { color: var(--text-muted); }
 .daily-game { max-width: 640px; }
 .daily-match-card .board-wrapper { width: min(100%, 560px); margin: 16px auto; }
-.daily-match-card .board-grid-wrapper { width: 100%; max-width: 560px; }
+.daily-match-card .board-grid-wrapper { width: min(100%, var(--board-size)); max-width: var(--board-size); }
 .daily-match-card .board { width: 100%; }
 .daily-match-card > .button-primary,
 .daily-match-card > .button-secondary { margin-top: 12px; }

@@ -64,6 +64,7 @@ export default function PlayPanel() {
                 size={game.boardSize}
                 boardStyle={game.boardStyle}
                 coordinatesShown={game.coordinatesShown}
+                orientation={game.playerColor}
                 disabled={Boolean(game.gameResult) || game.botTurn}
                 onSquareClick={game.handleSquareClick}
               />

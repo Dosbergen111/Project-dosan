@@ -363,6 +363,7 @@ export default function OnlinePanel({
                 boardStyle="default"
                 boardId="online-board"
                 coordinatesShown
+                orientation={room.color ?? "white"}
                 disabled={!canPlay || busy}
                 onSquareClick={clickSquare}
               />
