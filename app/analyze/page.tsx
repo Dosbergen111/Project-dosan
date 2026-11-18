@@ -1,5 +1,5 @@
-import ChessApp from "@/components/ChessApp";
+import AnalyzePanel from "@/components/analyze/AnalyzePanel";
 
 export default function AnalyzePage() {
-  return <ChessApp route="analyze" />;
+  return <AnalyzePanel />;
 }

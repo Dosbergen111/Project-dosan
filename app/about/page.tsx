@@ -1,5 +1,5 @@
-import ChessApp from "@/components/ChessApp";
+import AboutPanel from "@/components/about/AboutPanel";
 
 export default function AboutPage() {
-  return <ChessApp route="about" />;
+  return <AboutPanel />;
 }

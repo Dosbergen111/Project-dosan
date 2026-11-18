@@ -1,5 +1,5 @@
-import ChessApp from "@/components/ChessApp";
+import HistoryPanel from "@/components/history/HistoryPanel";
 
 export default function HistoryPage() {
-  return <ChessApp route="history" />;
+  return <HistoryPanel />;
 }

@@ -1,5 +1,9 @@
-import ChessApp from "@/components/ChessApp";
+"use client";
+
+import PuzzlesPanel from "@/components/puzzles/PuzzlesPanel";
+import { useAuth } from "@/components/AuthProvider";
 
 export default function PuzzlesPage() {
-  return <ChessApp route="puzzles" />;
+  const { account } = useAuth();
+  return <PuzzlesPanel userId={account?.id ?? null} />;
 }

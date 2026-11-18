@@ -1,5 +1,9 @@
-import ChessApp from "@/components/ChessApp";
+"use client";
+
+import ChatPanel from "@/components/chat/ChatPanel";
+import { useAuth } from "@/components/AuthProvider";
 
 export default function ChatPage() {
-  return <ChessApp route="chat" />;
+  const { account } = useAuth();
+  return <ChatPanel account={account} active />;
 }

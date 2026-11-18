@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import ChessBoard from "@/components/ChessBoard";
+import Board from "@/components/chess/Board";
 import { stateFromFen } from "@/lib/chess/board";
 import { moveToUci } from "@/lib/chess/moves";
 import { gameOutcome, getLegalMoves } from "@/lib/chess/rules";
@@ -354,7 +354,7 @@ export default function OnlinePanel({
           </div>
           {game && (
             <div className="board-wrapper">
-              <ChessBoard
+              <Board
                 game={game}
                 legalMoves={legalMoves}
                 selection={selection}

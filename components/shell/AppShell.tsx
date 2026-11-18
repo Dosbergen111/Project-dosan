@@ -42,11 +42,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <button className="logout-button" type="button" onClick={logout}>Выйти</button>
             </>
           ) : (
-            <button
-              type="button"
-              className="auth-button"
-              onClick={() => window.dispatchEvent(new Event("open-chess-auth"))}
-            >
+            <button type="button" className="auth-button" onClick={() => window.dispatchEvent(new Event("open-chess-auth"))}>
               Войти / Регистрация
             </button>
           )}
@@ -54,19 +50,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </header>
       <div className="container route-container">
         <nav id="section-tabs" className="tabs route-sidebar" aria-label="Разделы сайта">
-          {links.map((link) => {
-            const active = pathname === link.href;
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={`tab-button${active ? " active" : ""}`}
-                aria-current={active ? "page" : undefined}
-              >
-                {link.label}
-              </Link>
-            );
-          })}
+          {links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`tab-button${pathname === link.href ? " active" : ""}`}
+              aria-current={pathname === link.href ? "page" : undefined}
+            >
+              {link.label}
+            </Link>
+          ))}
         </nav>
         <main className="route-content">{children}</main>
       </div>

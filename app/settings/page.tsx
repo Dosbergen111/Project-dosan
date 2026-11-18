@@ -1,5 +1,5 @@
-import ChessApp from "@/components/ChessApp";
+import SettingsPanel from "@/components/settings/SettingsPanel";
 
 export default function SettingsPage() {
-  return <ChessApp route="settings" />;
+  return <SettingsPanel />;
 }

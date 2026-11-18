@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import ChessBoard from "@/components/ChessBoard";
+import Board from "@/components/chess/Board";
 import type { Account } from "@/components/AuthProvider";
 import { createInitialState, stateFromFen, stateToFen } from "@/lib/chess/board";
 import { moveToUci } from "@/lib/chess/moves";
@@ -144,7 +144,7 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
 
   useEffect(() => {
     if (!botTurn) return;
-    const worker = new Worker(new URL("../lib/chess/bot.worker.ts", import.meta.url), {
+    const worker = new Worker(new URL("../../lib/chess/bot.worker.ts", import.meta.url), {
       type: "module",
     });
     worker.onmessage = (event: MessageEvent<ChessMove | null>) => {
@@ -297,7 +297,7 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
                 {gameResult ? `Результат: ${resultLabel(gameResult)}.` : botTurn ? "Ход соперника…" : "Вы играете белыми."}
               </p>
               <div className="board-wrapper">
-                <ChessBoard
+                <Board
                   game={game}
                   legalMoves={legalMoves}
                   selection={selection}

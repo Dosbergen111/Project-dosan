@@ -32,3 +32,12 @@ export type GameState = {
   halfmoveClock: number;
   fullmoveNumber: number;
 };
+
+export type GameMode = "pvp" | "pvc";
+export type GameResult = "win" | "loss" | "draw";
+export type BotLevelId = "beginner" | "intermediate" | "master" | "grandmaster";
+
+export type PartySnapshot = {
+  game: GameState;
+  moves: string[];
+};

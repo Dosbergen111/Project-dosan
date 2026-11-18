@@ -1,5 +1,14 @@
-import ChessApp from "@/components/ChessApp";
+"use client";
+
+import OnlinePanel from "@/components/online/OnlinePanel";
+import { useAuth } from "@/components/AuthProvider";
 
 export default function OnlinePage() {
-  return <ChessApp route="online" />;
+  const { account, setAccount } = useAuth();
+  return (
+    <OnlinePanel
+      account={account}
+      onProfile={(profile) => setAccount((previous) => previous ? { ...previous, ...profile } : previous)}
+    />
+  );
 }

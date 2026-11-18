@@ -1,4 +1,4 @@
-import { chooseBotMove } from "@/lib/chess/moves";
+import { chooseBotMove } from "@/lib/chess/engine";
 import type { GameState, PieceColor } from "@/lib/chess/types";
 
 type BotRequest = {

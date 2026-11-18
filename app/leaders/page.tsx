@@ -1,5 +1,5 @@
-import ChessApp from "@/components/ChessApp";
+import LeadersPanel from "@/components/leaders/LeadersPanel";
 
 export default function LeadersPage() {
-  return <ChessApp route="leaderboard" />;
+  return <LeadersPanel />;
 }

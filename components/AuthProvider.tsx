@@ -11,6 +11,7 @@ import {
   type ReactNode,
   type SetStateAction,
 } from "react";
+import { fetchCurrentSession } from "@/lib/session";
 
 export type Account = {
   id: number;
@@ -22,7 +23,6 @@ export type Account = {
   league: string;
 };
 
-type ProfileData = Account & { error?: string };
 type AuthContextValue = {
   account: Account | null;
   isSessionLoading: boolean;
@@ -42,34 +42,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [account?.is_premium]);
 
   const refreshProfile = useCallback(async () => {
-    const response = await fetch("/api/profile", {
-      credentials: "same-origin",
-      cache: "no-store",
-    });
-    const data = (await response.json()) as ProfileData;
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) setAccount(null);
-      throw new Error(data.error ?? `Ошибка профиля (${response.status}).`);
-    }
-    setAccount(data);
+    const profile = await fetchCurrentSession();
+    setAccount(profile);
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
-    void fetch("/api/profile", {
-      credentials: "same-origin",
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        const data = (await response.json()) as ProfileData;
-        if (response.status === 401 || response.status === 403) {
-          setAccount(null);
-          return;
-        }
-        if (!response.ok) throw new Error(data.error ?? `Ошибка профиля (${response.status}).`);
-        setAccount(data);
-      })
+    void fetchCurrentSession(controller.signal)
+      .then((profile) => setAccount(profile))
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
           console.error("Could not load the profile:", error);

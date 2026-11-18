@@ -1,5 +1,5 @@
-import ChessApp from "@/components/ChessApp";
+import RulesPanel from "@/components/rules/RulesPanel";
 
 export default function RulesPage() {
-  return <ChessApp route="rules" />;
+  return <RulesPanel />;
 }

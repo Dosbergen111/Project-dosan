@@ -1,5 +1,5 @@
-import ChessApp from "@/components/ChessApp";
+import PlayPanel from "@/components/game/PlayPanel";
 
 export default function PlayPage() {
-  return <ChessApp route="game" />;
+  return <PlayPanel />;
 }
