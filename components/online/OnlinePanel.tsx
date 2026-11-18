@@ -6,6 +6,7 @@ import { stateFromFen } from "@/lib/chess/board";
 import { moveToUci } from "@/lib/chess/moves";
 import { gameOutcome, getLegalMoves } from "@/lib/chess/rules";
 import type { ChessMove, PieceColor, Square } from "@/lib/chess/types";
+import { LiaGlobeSolid, LiaChessBoardSolid, LiaUserSolid } from "react-icons/lia";
 
 type Account = {
   id: number;
@@ -314,12 +315,12 @@ export default function OnlinePanel({
   }
 
   const drawButtonLabel = room?.drawOfferedBy && room.drawOfferedBy !== room.color
-    ? "🤝 Принять ничью"
-    : "🤝 Предложить ничью";
+    ? "Принять ничью"
+    : "Предложить ничью";
 
   return (
     <div className="online-panel">
-      <h2>🌐 Игра с другом</h2>
+      <h2><LiaGlobeSolid aria-hidden="true" /> Игра с другом</h2>
       <div className="online-actions">
         <button type="button" onClick={create} disabled={busy}>Создать комнату</button>
         <input
@@ -349,8 +350,8 @@ export default function OnlinePanel({
                   : room.turn === room.color ? "Ваш ход." : "Ход соперника."}
           </p>
           <div className="online-player-status">
-            <span>⚪ {room.players.white?.username ?? "—"}</span>
-            <span>⚫ {room.players.black?.username ?? "Ожидает игрока"}</span>
+            <span><LiaUserSolid aria-hidden="true" /> {room.players.white?.username ?? "—"}</span>
+            <span><LiaUserSolid aria-hidden="true" /> {room.players.black?.username ?? "Ожидает игрока"}</span>
           </div>
           {game && (
             <div className="board-wrapper">
@@ -373,7 +374,7 @@ export default function OnlinePanel({
               <button onClick={() => void finish("draw")} disabled={busy || room.drawOfferedBy === room.color}>
                 {drawButtonLabel}
               </button>
-              <button className="danger" onClick={() => void finish("loss")} disabled={busy}>🚩 Сдаться</button>
+              <button className="danger" onClick={() => void finish("loss")} disabled={busy}>Сдаться</button>
             </div>
           )}
         </>

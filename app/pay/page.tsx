@@ -3,15 +3,16 @@
 import Link from "next/link";
 import ProfileSummary from "@/components/ProfileSummary";
 import PremiumActivation from "@/components/PremiumActivation";
+import { LiaCrownSolid } from "react-icons/lia";
 
 export default function PayPage() {
   return (
     <div className="standalone-page">
       <header className="site-header">
-        <h1>♔ Chess Master ♚</h1>
+        <h1>Chess Master</h1>
         <nav className="site-nav" aria-label="Основные страницы">
           <Link href="/">Игра</Link>
-          <Link href="/pay" aria-current="page">Premium</Link>
+          <Link href="/pay" aria-current="page"><LiaCrownSolid aria-hidden="true" /> Premium</Link>
           <Link href="/checkout">Оформление</Link>
         </nav>
         <div className="header-right"><ProfileSummary /></div>

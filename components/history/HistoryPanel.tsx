@@ -6,6 +6,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { createInitialState } from "@/lib/chess/board";
 import { getLegalMoves, makeMove } from "@/lib/chess/rules";
 import type { GameState } from "@/lib/chess/types";
+import { LiaHistorySolid } from "react-icons/lia";
 
 type HistoryEntry = { id: number; result: string; fen: string; moves: string; createdAt: string };
 
@@ -56,8 +57,8 @@ export default function HistoryPanel() {
   return (
     <section className="tab-content active">
       <div className="game-history">
-        <h2>📊 История партий</h2>
-        {!account ? <div className="no-games"><p>📭 Войдите в аккаунт, чтобы загрузить историю партий.</p></div> : message ? <div className="no-games">{message}</div> : history.length ? history.map((entry) => (
+        <h2><LiaHistorySolid aria-hidden="true" /> История партий</h2>
+        {!account ? <div className="no-games"><p>Войдите в аккаунт, чтобы загрузить историю партий.</p></div> : message ? <div className="no-games">{message}</div> : history.length ? history.map((entry) => (
           <article className="game-record" key={entry.id}>
             <div className="game-record-header"><span>Партия #{entry.id}</span><span>{new Date(entry.createdAt).toLocaleString("ru-RU")}</span></div>
             <span className={`game-record-result ${entry.result}`}>{entry.result === "win" ? "Победа" : entry.result === "loss" ? "Поражение" : "Ничья"}</span>

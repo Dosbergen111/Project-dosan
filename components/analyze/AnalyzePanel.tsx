@@ -3,6 +3,7 @@
 import Board from "@/components/chess/Board";
 import { useGame } from "@/components/chess/GameProvider";
 import { getLegalMoves } from "@/lib/chess/rules";
+import { LiaSearchSolid } from "react-icons/lia";
 
 const values = { king: 0, queen: 9, rook: 5, bishop: 3, knight: 3, pawn: 1 };
 
@@ -16,7 +17,7 @@ export default function AnalyzePanel() {
   return (
     <section className="tab-content active">
       <div className="analyze-panel">
-        <h2>🔍 Анализ партии</h2>
+        <h2><LiaSearchSolid aria-hidden="true" /> Анализ партии</h2>
         <p className="analysis-note">Просмотр ходов партии и оценка материала.</p>
         <div className="stats-grid">
           <div className="stat-box"><label>Оценка материала:</label><div>{balance > 0 ? `+${balance}` : balance}</div></div>

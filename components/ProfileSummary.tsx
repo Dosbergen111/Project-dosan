@@ -1,6 +1,7 @@
 "use client";
 
 import { useAuth } from "@/components/AuthProvider";
+import { LiaCrownSolid } from "react-icons/lia";
 
 export default function ProfileSummary() {
   const { account, isSessionLoading } = useAuth();
@@ -21,7 +22,7 @@ export default function ProfileSummary() {
       <span className="profile-chip">Энергия <strong id="user-energy">{account.is_premium ? "∞" : account.energy}</strong></span>
       <span className="profile-chip">Лига <strong id="user-league">{account.league}</strong></span>
       <span className="profile-chip">Premium <strong id="user-premium">{account.is_premium ? "Да" : "Нет"}</strong></span>
-      {account.is_premium && <span className="vip-badge">👑 VIP</span>}
+      {account.is_premium && <span className="vip-badge"><LiaCrownSolid aria-hidden="true" /> VIP</span>}
     </div>
   );
 }

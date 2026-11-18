@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { LiaComments } from "react-icons/lia";
 
 type Account = { id: number; username: string };
 type ChatMessage = {
@@ -97,7 +98,7 @@ export default function ChatPanel({
 
   return (
     <div className="chat-panel">
-      <h2>💬 Глобальный чат</h2>
+      <h2><LiaComments aria-hidden="true" /> Глобальный чат</h2>
       <div id="chat-box" className="chat-box" aria-live="polite">
         {error && <p className="chat-error">{error}</p>}
         {!messages.length && !error && <p className="chat-empty">Чат пуст.</p>}

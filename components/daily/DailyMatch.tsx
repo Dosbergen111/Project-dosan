@@ -7,6 +7,7 @@ import { createInitialState, stateFromFen, stateToFen } from "@/lib/chess/board"
 import { moveToUci } from "@/lib/chess/moves";
 import { gameOutcome, getLegalMoves, makeMove } from "@/lib/chess/rules";
 import type { ChessMove, GameState, PieceColor } from "@/lib/chess/types";
+import { LiaCalendarSolid, LiaChessBoardSolid } from "react-icons/lia";
 
 type GameResult = "win" | "loss" | "draw";
 type MatchResult = {
@@ -273,9 +274,9 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
       <div className="daily-match-heading">
         <div>
           <span className="page-badge">Один рейтинговый матч в день · UTC</span>
-          <h2>Дневной матч</h2>
+          <h2><LiaCalendarSolid aria-hidden="true" /> Дневной матч</h2>
         </div>
-        <span className="daily-opponent">🤖 Средний · 1200 Elo</span>
+        <span className="daily-opponent"><LiaChessBoardSolid aria-hidden="true" /> Средний · 1200 Elo</span>
       </div>
       {isSessionLoading ? (
         <p className="daily-message" role="status">Загружаем профиль…</p>

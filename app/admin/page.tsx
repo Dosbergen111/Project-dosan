@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/AuthProvider";
 import ProfileSummary from "@/components/ProfileSummary";
+import { LiaCogSolid, LiaCrownSolid } from "react-icons/lia";
 
 type AdminUser = {
   id: number;
@@ -92,7 +93,7 @@ export default function AdminPage() {
   return (
     <>
       <header className="site-header">
-        <h1>♔ Chess Master ♚</h1>
+        <h1>Chess Master</h1>
         <nav className="site-nav" aria-label="Основные страницы">
           <Link href="/">Игра</Link>
           <Link href="/admin" aria-current="page">Админка</Link>
@@ -101,7 +102,7 @@ export default function AdminPage() {
       </header>
       <main className="admin-container page-content">
         <section className="panel">
-          <h2>⚙️ Управление игроками</h2>
+          <h2><LiaCogSolid aria-hidden="true" /> Управление игроками</h2>
           {error && <p className="admin-error" role="alert">{error}</p>}
           {message && <p className="admin-success" role="status">{message}</p>}
           <div className="table-scroll">
@@ -123,7 +124,7 @@ export default function AdminPage() {
                 ) : users.map((user) => (
                   <tr key={user.id}>
                     <td>{user.id}</td>
-                    <td>{user.username}{user.is_premium ? " 💎" : ""}</td>
+                    <td>{user.username}{user.is_premium ? <><span aria-hidden="true"> </span><LiaCrownSolid aria-hidden="true" /></> : ""}</td>
                     <td>
                       <input
                         type="number"
@@ -140,7 +141,7 @@ export default function AdminPage() {
                     </td>
                     <td>{user.is_premium ? "∞" : user.energy}</td>
                     <td>{user.role}</td>
-                    <td>{user.is_blocked ? "🔴 Забанен" : "🟢 Ок"}</td>
+                    <td>{user.is_blocked ? "Забанен" : "Активен"}</td>
                     <td className="admin-actions">
                       <button
                         className="btn-premium"

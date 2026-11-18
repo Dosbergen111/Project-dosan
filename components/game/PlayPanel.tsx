@@ -6,6 +6,21 @@ import { useGame } from "@/components/chess/GameProvider";
 import { useAuth, type Account } from "@/components/AuthProvider";
 import { stateToFen } from "@/lib/chess/board";
 import { levelByDifficulty } from "@/lib/chess/levels";
+import {
+  LiaChessBoardSolid,
+  LiaChessKingSolid,
+  LiaChessQueenSolid,
+  LiaBookOpenSolid,
+  LiaCogSolid,
+  LiaHistorySolid,
+  LiaPuzzlePieceSolid,
+  LiaSearchSolid,
+  LiaSignInAltSolid,
+  LiaTimesSolid,
+  LiaUserSolid,
+  LiaUserPlusSolid,
+  LiaLockSolid,
+} from "react-icons/lia";
 
 function formatTime(seconds: number) {
   return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
@@ -109,8 +124,8 @@ export default function PlayPanel() {
         <div className="auth-modal" onMouseDown={(event) => event.target === event.currentTarget && setAuthOpen(false)}>
           <div className="auth-modal-content">
             <div className="auth-modal-header">
-              <h2>{authMode === "register" ? "⚡ Регистрация" : "🔑 Вход"}</h2>
-              <button className="auth-modal-close" type="button" onClick={() => setAuthOpen(false)} aria-label="Закрыть">&times;</button>
+              <h2>{authMode === "register" ? "Регистрация" : "Вход"}</h2>
+              <button className="auth-modal-close" type="button" onClick={() => setAuthOpen(false)} aria-label="Закрыть"><LiaTimesSolid aria-hidden="true" /></button>
             </div>
             <form onSubmit={handleAuth}>
               <div className="auth-form-group">
@@ -122,7 +137,7 @@ export default function PlayPanel() {
                 <input id="auth-password" type="password" autoComplete={authMode === "login" ? "current-password" : "new-password"} required value={password} onChange={(event) => setPassword(event.target.value)} />
               </div>
               {message && <div className="auth-error" role="status">{message}</div>}
-              <button type="submit" className="auth-submit-btn" disabled={busy}>{busy ? "Подождите…" : authMode === "register" ? "🚀 Зарегистрироваться" : "🔑 Войти"}</button>
+              <button type="submit" className="auth-submit-btn" disabled={busy}>{busy ? "Подождите…" : authMode === "register" ? <><LiaUserPlusSolid aria-hidden="true" /> Зарегистрироваться</> : <><LiaSignInAltSolid aria-hidden="true" /> Войти</>}</button>
             </form>
           </div>
         </div>
@@ -131,11 +146,11 @@ export default function PlayPanel() {
         <div className="game-top-panel">
           <div className="status" aria-live="polite">{statusText}</div>
           <div className="timer-display">
-            <div className="timer-white"><span className="timer-label">⚪ Белые</span><span className="timer-value">{formatTime(game.whiteTime)}</span></div>
-            <div className="timer-black"><span className="timer-label">⚫ Чёрные</span><span className="timer-value">{formatTime(game.blackTime)}</span></div>
+            <div className="timer-white"><span className="timer-label"><LiaChessKingSolid aria-hidden="true" /> Белые</span><span className="timer-value">{formatTime(game.whiteTime)}</span></div>
+            <div className="timer-black"><span className="timer-label"><LiaChessQueenSolid aria-hidden="true" /> Чёрные</span><span className="timer-value">{formatTime(game.blackTime)}</span></div>
           </div>
           <div className="board-size-quick">
-            <label>📐 Размер:</label>
+            <label><LiaChessBoardSolid aria-hidden="true" /> Размер:</label>
             {(["small", "medium", "large"] as const).map((size) => (
               <button key={size} className={`size-btn${game.boardSize === size ? " active" : ""}`} onClick={() => game.setBoardSize(size)}>
                 {size === "small" ? "S" : size === "medium" ? "M" : "L"}
@@ -154,7 +169,7 @@ export default function PlayPanel() {
             disabled={Boolean(game.gameResult) || game.botTurn}
             onSquareClick={game.handleSquareClick}
           />
-          {game.materialShown && <div className="material-balance"><span>⚪ {material.white}</span><span>⚫ {material.black}</span></div>}
+          {game.materialShown && <div className="material-balance"><span>{material.white}</span><span>{material.black}</span></div>}
         </div>
         <div className="moves-panel">
           <div className="current-moves">
@@ -164,20 +179,20 @@ export default function PlayPanel() {
           {game.autoSaveState && <p className="chat-note" aria-live="polite">{game.autoSaveState}</p>}
         </div>
         <div className="controls">
-          <label>⏱️ Время на партию:</label>
+          <label><LiaHistorySolid aria-hidden="true" /> Время на партию:</label>
           <div className="button-group">
             {[["1м", 60], ["3м", 180], ["5м", 300], ["10м", 600], ["15м", 900], ["30м", 1800]].map(([label, seconds]) => (
               <button key={seconds} className={game.selectedTime === seconds ? "success" : ""} onClick={() => game.setTime(Number(seconds))}>{label}</button>
             ))}
           </div>
-          <label>🎯 Режим игры:</label>
+          <label>Режим игры:</label>
           <div className="button-group">
-            <button className={game.gameMode === "pvp" ? "success" : ""} disabled={game.partyInProgress} onClick={() => game.changeGameMode("pvp")}>👥 Человек vs Человек</button>
-            <button className={game.gameMode === "pvc" ? "success" : ""} disabled={game.partyInProgress} onClick={() => game.changeGameMode("pvc")}>🤖 vs Компьютер</button>
+            <button className={game.gameMode === "pvp" ? "success" : ""} disabled={game.partyInProgress} onClick={() => game.changeGameMode("pvp")}><LiaUserSolid aria-hidden="true" /> Человек vs Человек</button>
+            <button className={game.gameMode === "pvc" ? "success" : ""} disabled={game.partyInProgress} onClick={() => game.changeGameMode("pvc")}><LiaChessBoardSolid aria-hidden="true" /> vs Компьютер</button>
           </div>
           {game.gameMode === "pvc" && (
             <>
-              <label>💡 Подсказки:</label>
+              <label><LiaPuzzlePieceSolid aria-hidden="true" /> Подсказки:</label>
               <div className="button-group">
                 <button type="button" disabled={Boolean(game.gameResult) || game.botTurn || !game.legalMoves.length || hintsRemaining === 0} onClick={requestHint}>
                   {account?.is_premium ? "Подсказка · ∞" : `Подсказка · ${hintsRemaining}/3`}
@@ -186,12 +201,12 @@ export default function PlayPanel() {
               {game.hintMessage && <small className="secondary-text" role="status">{game.hintMessage}</small>}
               <label>Играть за:</label>
               <div className="button-group">
-                <button className={game.playerColor === "white" ? "success" : ""} disabled={game.partyInProgress} onClick={() => game.changePlayerColor("white")}>⚪ Белые</button>
-                <button className={game.playerColor === "black" ? "success" : ""} disabled={game.partyInProgress} onClick={() => game.changePlayerColor("black")}>⚫ Чёрные</button>
+                <button className={game.playerColor === "white" ? "success" : ""} disabled={game.partyInProgress} onClick={() => game.changePlayerColor("white")}><LiaChessKingSolid aria-hidden="true" /> Белые</button>
+                <button className={game.playerColor === "black" ? "success" : ""} disabled={game.partyInProgress} onClick={() => game.changePlayerColor("black")}><LiaChessQueenSolid aria-hidden="true" /> Чёрные</button>
               </div>
-              <label>🎚️ Уровень сложности:</label>
+              <label><LiaCogSolid aria-hidden="true" /> Уровень сложности:</label>
               <div className="button-group">
-                {[["🟢 Новичок", 1], ["🟡 Средний", 5], ["🔴 Мастер", 10], ["🔴 Гроссмейстер", 20]].map(([label, level]) => (
+                {[["Новичок", 1], ["Средний", 5], ["Мастер", 10], ["Гроссмейстер", 20]].map(([label, level]) => (
                   <button key={level} className={game.difficulty === level ? "success" : ""} disabled={game.partyInProgress || (level === 20 && account?.is_premium !== true)} onClick={() => game.changeDifficulty(Number(level))}>{label}</button>
                 ))}
               </div>
@@ -204,12 +219,12 @@ export default function PlayPanel() {
           )}
         </div>
         <div className="button-row">
-          <button onClick={game.undoMove} disabled={!game.past.length || game.botTurn || Boolean(game.gameResult)}>↶ Отменить ход</button>
-          <button onClick={game.startNewGame} className="primary">🔄 Новая игра</button>
-          <button onClick={() => game.setGameResult("loss")} className="danger" disabled={Boolean(game.gameResult) || !game.partyStarted}>🚩 Сдаться</button>
-          <button onClick={() => game.setGameResult("draw")} disabled={Boolean(game.gameResult) || !game.partyStarted}>🤝 Ничья</button>
-          <button onClick={exportMoves}>📄 Скачать PGN</button>
-          <button onClick={copyFen}>📋 FEN</button>
+          <button onClick={game.undoMove} disabled={!game.past.length || game.botTurn || Boolean(game.gameResult)}><LiaHistorySolid aria-hidden="true" /> Отменить ход</button>
+          <button onClick={game.startNewGame} className="primary"><LiaChessBoardSolid aria-hidden="true" /> Новая игра</button>
+          <button onClick={() => game.setGameResult("loss")} className="danger" disabled={Boolean(game.gameResult) || !game.partyStarted}><LiaChessKingSolid aria-hidden="true" /> Сдаться</button>
+          <button onClick={() => game.setGameResult("draw")} disabled={Boolean(game.gameResult) || !game.partyStarted}><LiaTimesSolid aria-hidden="true" /> Ничья</button>
+          <button onClick={exportMoves}><LiaBookOpenSolid aria-hidden="true" /> Скачать PGN</button>
+          <button onClick={copyFen}><LiaSearchSolid aria-hidden="true" /> FEN</button>
         </div>
         <div className="fen-controls">
           <input value={fenInput} onChange={(event) => setFenInput(event.target.value)} placeholder="Вставьте FEN позицию..." aria-label="FEN позиция" />

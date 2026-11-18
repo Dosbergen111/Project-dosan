@@ -6,6 +6,7 @@ import { DAILY_PUZZLES } from "@/lib/chess/puzzles";
 import { moveToUci } from "@/lib/chess/moves";
 import { getLegalMoves, makeMove } from "@/lib/chess/rules";
 import type { GameState, Square } from "@/lib/chess/types";
+import { LiaPuzzlePieceSolid } from "react-icons/lia";
 
 type Props = { userId: number | null };
 
@@ -113,7 +114,7 @@ export default function PuzzlePanel({ userId }: Props) {
 
   return (
     <div className="puzzles-panel">
-      <h2>🧩 Задачи дня</h2>
+      <h2><LiaPuzzlePieceSolid aria-hidden="true" /> Задачи дня</h2>
       <p className="puzzle-progress">Очки сегодня: {ready ? solved : 0} / {DAILY_PUZZLES.length}</p>
       <p className="puzzle-status" aria-live="polite">
         {!ready
