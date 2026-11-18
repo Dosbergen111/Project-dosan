@@ -43,6 +43,7 @@ type GameContextValue = {
   outcome: ReturnType<typeof gameOutcome>;
   check: boolean;
   botTurn: boolean;
+  botThinking: boolean;
   partyInProgress: boolean;
   setBoardSize: (size: "small" | "medium" | "large") => void;
   setHintsUsed: Dispatch<SetStateAction<number>>;
@@ -96,6 +97,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
   const [autoSaveState, setAutoSaveState] = useState("");
   const [hintsUsed, setHintsUsed] = useState(0);
   const [hintMessage, setHintMessage] = useState("");
+  const [botThinking, setBotThinking] = useState(false);
   const [boardStyle, setBoardStyle] = useState("default");
   const [coordinatesShown, setCoordinatesShown] = useState(true);
   const [materialShown, setMaterialShown] = useState(true);
@@ -227,8 +229,10 @@ export function GameProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!botTurn) return;
+    setBotThinking(true);
     const worker = new Worker(new URL("../../lib/chess/bot.worker.ts", import.meta.url), { type: "module" });
     worker.onmessage = (event: MessageEvent<ChessMove | null>) => {
+      setBotThinking(false);
       const move = event.data;
       if (!move) return;
       const next = makeMove(game, move);
@@ -239,6 +243,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
       const result = resultFromOutcome(gameOutcome(next), next, playerColor);
       if (result) setGameResult(result);
     };
+    worker.onerror = () => setBotThinking(false);
     worker.postMessage({ state: game, difficulty: activeDifficulty, botColor: game.turn });
     return () => worker.terminate();
   }, [activeDifficulty, botTurn, game, moves, playerColor]);
@@ -287,7 +292,7 @@ export function GameProvider({ children }: { children: ReactNode }) {
     game, past, moves, selection, gameMode, playerColor, difficulty, activeDifficulty, partyStarted,
     boardSize, gameResult, whiteTime, blackTime, selectedTime, autoSaveState, hintsUsed, hintMessage,
     boardStyle, coordinatesShown, materialShown, lightTheme,
-    legalMoves, outcome, check, botTurn, partyInProgress,
+    legalMoves, outcome, check, botTurn, botThinking, partyInProgress,
     setBoardSize, setHintsUsed,     setHintMessage, setSelection, setGameResult, handleSquareClick, startNewGame, resetLocalGame,
     undoMove, changeDifficulty, changeGameMode, changePlayerColor, setTime, loadFenPosition,
     setBoardStyle, setCoordinatesShown, setMaterialShown, setLightTheme,

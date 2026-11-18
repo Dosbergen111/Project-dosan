@@ -84,7 +84,7 @@ export function chooseBotMove(
   let alpha = -Infinity;
   let bestMoves: ChessMove[] = [];
   for (const move of orderedMoves(state, moves)) {
-    const score = search(applyMove(state, move), level.depth - 1, alpha, Infinity, botColor);
+    const score = search(applyMove(state, move), level.fallbackDepth - 1, alpha, Infinity, botColor);
     if (score > bestScore) {
       bestScore = score;
       bestMoves = [move];

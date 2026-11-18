@@ -7,13 +7,14 @@ export type BotLevel = {
   skill: number;
   randomMoveRatio: number;
   elo: number;
+  fallbackDepth: number;
 };
 
 export const BOT_LEVELS: readonly BotLevel[] = [
-  { id: "beginner", label: "Новичок", depth: 2, skill: 2, randomMoveRatio: 0.3, elo: 800 },
-  { id: "intermediate", label: "Средний", depth: 4, skill: 5, randomMoveRatio: 0.12, elo: 1200 },
-  { id: "master", label: "Мастер", depth: 5, skill: 10, randomMoveRatio: 0.05, elo: 1800 },
-  { id: "grandmaster", label: "Гроссмейстер", depth: 6, skill: 20, randomMoveRatio: 0, elo: 2200 },
+  { id: "beginner", label: "Новичок", depth: 2, skill: 2, randomMoveRatio: 0.3, elo: 800, fallbackDepth: 1 },
+  { id: "intermediate", label: "Средний", depth: 6, skill: 6, randomMoveRatio: 0, elo: 1200, fallbackDepth: 2 },
+  { id: "master", label: "Мастер", depth: 12, skill: 12, randomMoveRatio: 0, elo: 1800, fallbackDepth: 3 },
+  { id: "grandmaster", label: "Гроссмейстер", depth: 18, skill: 20, randomMoveRatio: 0, elo: 2200, fallbackDepth: 4 },
 ];
 
 export function levelByDifficulty(difficulty: number): BotLevel {

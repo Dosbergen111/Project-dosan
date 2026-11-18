@@ -54,6 +54,7 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
   const [loadedForUserId, setLoadedForUserId] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [botThinking, setBotThinking] = useState(false);
   const [retryCount, setRetryCount] = useState(0);
   const savedGames = useRef(new Set<string>());
   const legalMoves = getLegalMoves(game);
@@ -145,10 +146,12 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
 
   useEffect(() => {
     if (!botTurn) return;
+    setBotThinking(true);
     const worker = new Worker(new URL("../../lib/chess/bot.worker.ts", import.meta.url), {
       type: "module",
     });
     worker.onmessage = (event: MessageEvent<ChessMove | null>) => {
+      setBotThinking(false);
       const move = event.data;
       if (!move) return;
       const next = makeMove(game, move);
@@ -161,6 +164,7 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
       if (result) setGameResult(result);
     };
     worker.onerror = (event) => {
+      setBotThinking(false);
       console.error("Daily match bot worker failed:", event.message);
       setError("Не удалось рассчитать ход соперника.");
     };
@@ -295,7 +299,13 @@ export default function DailyMatch({ account, isSessionLoading, onProfile }: Pro
           {started ? (
             <div className="daily-game">
               <p className="daily-message">
-                {gameResult ? `Результат: ${resultLabel(gameResult)}.` : botTurn ? "Ход соперника…" : "Вы играете белыми."}
+                {gameResult
+                  ? `Результат: ${resultLabel(gameResult)}.`
+                  : botThinking
+                    ? "Думает · Средний"
+                    : botTurn
+                      ? "Ход соперника…"
+                      : "Вы играете белыми."}
               </p>
               <div className="board-wrapper">
                 <Board

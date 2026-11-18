@@ -6,6 +6,7 @@ import GameAuthModal from "@/components/game/GameAuthModal";
 import GameActions from "@/components/game/GameActions";
 import GameSettings from "@/components/game/GameSettings";
 import OpponentCard from "@/components/game/OpponentCard";
+import { levelByDifficulty } from "@/lib/chess/levels";
 import { LiaChessBoardSolid, LiaChessKingSolid, LiaChessQueenSolid } from "react-icons/lia";
 
 function formatTime(seconds: number) {
@@ -20,7 +21,9 @@ export default function PlayPanel() {
     white: game.moves[index * 2],
     black: game.moves[index * 2 + 1],
   }));
-  const statusText = game.outcome
+  const statusText = game.botThinking
+    ? `Думает · ${levelByDifficulty(game.activeDifficulty).label}`
+    : game.outcome
     ? game.outcome === "checkmate"
       ? game.game.turn === game.playerColor ? "Мат — вы проиграли!" : "Мат — вы победили!"
       : "Ничья."
